@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Modal, Progress, Typography, Button } from 'antd';
-import { CheckCircleOutlined, CloseCircleOutlined, DesktopOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, CloseCircleOutlined, DesktopOutlined, FileZipOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
 
@@ -14,6 +14,7 @@ const BrowserDownloadModal: React.FC<BrowserDownloadModalProps> = ({ visible, on
     const [status, setStatus] = useState('正在检查浏览器环境...');
     const [isFailed, setIsFailed] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
+    const [isExtracting, setIsExtracting] = useState(false);
     const lastProgressRef = useRef(0);
     const progressUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -24,6 +25,7 @@ const BrowserDownloadModal: React.FC<BrowserDownloadModalProps> = ({ visible, on
             setStatus('正在检查浏览器环境...');
             setIsFailed(false);
             setErrorMessage('');
+            setIsExtracting(false);
             lastProgressRef.current = 0;
 
             // 清除之前的定时器
@@ -39,6 +41,18 @@ const BrowserDownloadModal: React.FC<BrowserDownloadModalProps> = ({ visible, on
                     setStatus(`正在下载浏览器...`);
                     lastProgressRef.current = percent;
                 }
+            });
+
+            // 监听解压缩开始
+            window.electronAPI.onExtractStart(() => {
+                setIsExtracting(true);
+                setStatus('正在解压缩浏览器文件...');
+            });
+
+            // 监听解压缩进度
+            window.electronAPI.onExtractProgress((percent: number) => {
+                setProgress(percent);
+                setStatus(`正在解压缩浏览器文件...`);
             });
 
             // 监听下载失败
@@ -57,7 +71,7 @@ const BrowserDownloadModal: React.FC<BrowserDownloadModalProps> = ({ visible, on
             window.electronAPI.on('hide-download-modal', () => {
                 // 显示完成状态
                 setProgress(100);
-                setStatus('浏览器下载完成！');
+                setStatus('浏览器准备完成！');
 
                 // 延迟关闭模态框，让用户看到完成状态
                 setTimeout(() => {
@@ -79,6 +93,7 @@ const BrowserDownloadModal: React.FC<BrowserDownloadModalProps> = ({ visible, on
         window.electronAPI.sendMessage('retry-download');
         setIsFailed(false);
         setProgress(0);
+        setIsExtracting(false);
         setStatus('重新开始下载...');
         lastProgressRef.current = 0;
     };
@@ -108,21 +123,25 @@ const BrowserDownloadModal: React.FC<BrowserDownloadModalProps> = ({ visible, on
                             重试下载
                         </Button>
                     </>
-                ) : progress === 100 ? (
+                ) : progress === 100 && !isExtracting ? (
                     <>
                         <div className="mb-4 flex justify-center">
                             <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
                                 <CheckCircleOutlined className="text-green-500 text-2xl" />
                             </div>
                         </div>
-                        <Title level={4} className="mb-2">下载完成</Title>
+                        <Title level={4} className="mb-2">准备完成</Title>
                         <Text type="secondary" className="block mb-4">浏览器已准备就绪</Text>
                     </>
                 ) : (
                     <>
                         <div className="mb-4 flex justify-center">
                             <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center">
-                                <DesktopOutlined className="text-blue-500 text-2xl" />
+                                {isExtracting ? (
+                                    <FileZipOutlined className="text-blue-500 text-2xl" />
+                                ) : (
+                                    <DesktopOutlined className="text-blue-500 text-2xl" />
+                                )}
                             </div>
                         </div>
                         <Title level={4} className="mb-2">浏览器环境准备中</Title>

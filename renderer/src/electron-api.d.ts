@@ -3,6 +3,8 @@ export interface IElectronAPI {
     // 浏览器下载相关
     onProgress: (callback: (percent: number) => void) => void;
     onDownloadFailed: (callback: (msg: string) => void) => void;
+    onExtractStart: (callback: () => void) => void;
+    onExtractProgress: (callback: (percent: number) => void) => void;
 
     // 研究相关
     startResearch: (params: { query: string; maxResults?: number }, callback: (result: { success: boolean; message: string; data?: any }) => void) => void;

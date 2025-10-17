@@ -41,7 +41,7 @@ const createWindow = (initialRoute: string): void => {
       nodeIntegration: false,
     },
     icon: iconPath,
-    title: "职航",
+    title: "须臾",
     autoHideMenuBar: true,
   });
 
@@ -81,17 +81,29 @@ async function checkAndDownloadBrowser() {
     mainWindow?.webContents.send('show-download-modal');
 
     try {
-      await ensureBrowserInstalled((percent: number) => {
-        // 限制进度更新频率，避免过多更新
-        if (percent - lastProgress >= 1 || percent === 100) {
-          console.log(`下载进度: ${percent}%`);
-          mainWindow?.webContents.send("download-progress", percent);
-          lastProgress = percent;
+      await ensureBrowserInstalled(
+        (percent: number) => {
+          // 限制进度更新频率，避免过多更新
+          if (percent - lastProgress >= 1 || percent === 100) {
+            console.log(`下载进度: ${percent}%`);
+            mainWindow?.webContents.send("download-progress", percent);
+            lastProgress = percent;
+          }
+        },
+        () => {
+          // 解压缩开始
+          console.log("开始解压缩");
+          mainWindow?.webContents.send("extract-start");
+        },
+        (percent: number) => {
+          // 解压缩进度
+          console.log(`解压缩进度: ${percent}%`);
+          mainWindow?.webContents.send("extract-progress", percent);
         }
-      });
+      );
 
-      // 下载完成后隐藏模态框
-      console.log("下载完成，发送隐藏模态框事件");
+      // 下载和解压缩完成后隐藏模态框
+      console.log("下载和解压缩完成，发送隐藏模态框事件");
       mainWindow?.webContents.send("hide-download-modal");
       isDownloading = false;
     } catch (err: any) {
@@ -266,17 +278,29 @@ ipcMain.on("retry-download", async () => {
   mainWindow?.webContents.send("download-progress", 0);
 
   try {
-    await ensureBrowserInstalled((percent: number) => {
-      // 限制进度更新频率，避免过多更新
-      if (percent - lastProgress >= 1 || percent === 100) {
-        console.log(`下载进度: ${percent}%`);
-        mainWindow?.webContents.send("download-progress", percent);
-        lastProgress = percent;
+    await ensureBrowserInstalled(
+      (percent: number) => {
+        // 限制进度更新频率，避免过多更新
+        if (percent - lastProgress >= 1 || percent === 100) {
+          console.log(`下载进度: ${percent}%`);
+          mainWindow?.webContents.send("download-progress", percent);
+          lastProgress = percent;
+        }
+      },
+      () => {
+        // 解压缩开始
+        console.log("开始解压缩");
+        mainWindow?.webContents.send("extract-start");
+      },
+      (percent: number) => {
+        // 解压缩进度
+        console.log(`解压缩进度: ${percent}%`);
+        mainWindow?.webContents.send("extract-progress", percent);
       }
-    });
+    );
 
-    // 下载完成后隐藏模态框
-    console.log("下载完成，发送隐藏模态框事件");
+    // 下载和解压缩完成后隐藏模态框
+    console.log("下载和解压缩完成，发送隐藏模态框事件");
     mainWindow?.webContents.send("hide-download-modal");
     isDownloading = false;
   } catch (err: any) {

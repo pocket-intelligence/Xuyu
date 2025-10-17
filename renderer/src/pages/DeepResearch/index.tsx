@@ -23,10 +23,6 @@ const DeepResearchPage: React.FC = () => {
                 </Space>
             </Card>
 
-            <Card className="mt-6">
-                <Title level={4}>研究历史</Title>
-                <Text type="secondary">暂无研究记录</Text>
-            </Card>
         </div>
     );
 };

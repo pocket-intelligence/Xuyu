@@ -75,22 +75,63 @@ export async function downloadFile(
 }
 
 // -------------------------------------------------------------
-// 2. 解压函数（保持不变）
+// 2. 解压函数（增强版，支持进度回调）
 // -------------------------------------------------------------
-export async function extractZip(zipPath: string, extractTo: string) {
-    // 确保使用 promisify(stream.pipeline) 来等待解压完成
-    const zipStream = fs.createReadStream(zipPath).pipe(unzipper.Extract({ path: extractTo }));
-    await new Promise((resolve, reject) => {
-        zipStream.on('close', resolve);
-        zipStream.on('error', reject);
+export async function extractZip(zipPath: string, extractTo: string, onExtractStart?: () => void, onExtractProgress?: (percent: number) => void) {
+    return new Promise<void>((resolve, reject) => {
+        try {
+            // 触发解压开始事件
+            if (onExtractStart) onExtractStart();
+
+            let entryCount = 0;
+            let extractedCount = 0;
+
+            const zipStream = fs.createReadStream(zipPath)
+                .pipe(unzipper.Parse())
+                .on('entry', (entry: any) => {
+                    entryCount++;
+                    const filePath = path.join(extractTo, entry.path);
+
+                    // 确保目录存在
+                    const dirName = path.dirname(filePath);
+                    if (!fs.existsSync(dirName)) {
+                        fs.mkdirSync(dirName, { recursive: true });
+                    }
+
+                    if (entry.type === 'Directory') {
+                        entry.autodrain();
+                    } else {
+                        const writeStream = fs.createWriteStream(filePath);
+                        entry.pipe(writeStream);
+
+                        writeStream.on('close', () => {
+                            extractedCount++;
+                            if (onExtractProgress && entryCount > 0) {
+                                const percent = Math.round((extractedCount / entryCount) * 100);
+                                onExtractProgress(percent);
+                            }
+                        });
+                    }
+                })
+                .on('close', () => {
+                    resolve();
+                })
+                .on('error', (error: Error) => {
+                    reject(error);
+                });
+        } catch (error) {
+            reject(error);
+        }
     });
 }
 
 // -------------------------------------------------------------
-// 3. 整合函数（使用新的下载逻辑）
+// 3. 整合函数（使用新的下载和解压逻辑）
 // -------------------------------------------------------------
 export async function ensureBrowserInstalled(
-    onProgress?: (percent: number) => void
+    onProgress?: (percent: number) => void,
+    onExtractStart?: () => void,
+    onExtractProgress?: (percent: number) => void
 ) {
     try {
         // 使用 fs/promises 版本，如果您的 Node.js 版本支持
@@ -111,8 +152,8 @@ export async function ensureBrowserInstalled(
         await downloadFile(CHROMIUM_URL, zipPath, onProgress);
 
         console.log("📦 解压中...");
-        if (onProgress) onProgress(100); // 解压完成
-        await extractZip(zipPath, baseDir);
+        // 解压完成
+        await extractZip(zipPath, baseDir, onExtractStart, onExtractProgress);
 
         // 删除临时压缩包
         fs.unlinkSync(zipPath);

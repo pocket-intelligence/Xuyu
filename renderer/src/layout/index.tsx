@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { SearchOutlined, HistoryOutlined, SettingOutlined, BarChartOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import BrowserDownloadModal from '../components/BrowserDownloadModal';
+import defaultIcon from "../assets/icon.png"
 
 const { Header, Sider, Content } = Layout;
 
@@ -35,17 +36,22 @@ export default function AppLayout() {
                 className="flex items-center px-4 md:px-6 bg-white/80 backdrop-blur-md border-b border-gray-200/50 h-16 fixed top-0 left-0 right-0 z-50 shadow-soft"
             >
                 <div className="flex items-center">
+                    <img
+                        src={defaultIcon}
+                        alt="Logo"
+                        className="h-8 w-8 mr-3 animate-bounce-gentle"
+                    />
                     <div className="hidden sm:block">
                         <span className="font-bold text-xl bg-gradient-to-r from-primary-600 to-primary-900 bg-clip-text text-transparent">
-                            Deep Research
+                            须臾
                         </span>
                     </div>
                 </div>
                 <div className="flex-1"></div>
                 <div className="flex items-center space-x-4">
                     <div className="hidden md:flex items-center space-x-2 bg-primary-50 px-3 py-1 rounded-full">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span className="text-primary-700 text-sm font-medium">就绪</span>
+                        {/* <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div> */}
+                        <span className="text-primary-700 text-sm font-medium">吾尝终日而思，不如须臾之所学</span>
                     </div>
                 </div>
             </Header>

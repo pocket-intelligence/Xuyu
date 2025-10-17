@@ -6,6 +6,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
         ipcRenderer.on("download-progress", (_, percent) => callback(percent)),
     onDownloadFailed: (callback: (msg: string) => void) =>
         ipcRenderer.on("download-failed", (_, msg) => callback(msg)),
+    onExtractStart: (callback: () => void) =>
+        ipcRenderer.on("extract-start", () => callback()),
+    onExtractProgress: (callback: (percent: number) => void) =>
+        ipcRenderer.on("extract-progress", (_, percent) => callback(percent)),
 
     // 研究相关
     startResearch: (params: { query: string; maxResults?: number }, callback: (result: { success: boolean; message: string; data?: any }) => void) => {

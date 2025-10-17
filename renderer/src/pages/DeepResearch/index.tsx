@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Input, Button, Card, Typography, Spin, message, Space, Skeleton } from 'antd';
-import { SearchOutlined, RobotOutlined, SendOutlined, LoadingOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { Input, Button, Card, Typography, Spin, message, Space, Skeleton, List, Tag } from 'antd';
+import { SearchOutlined, RobotOutlined, SendOutlined, LoadingOutlined, CheckCircleOutlined, LinkOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 
 const { Title, Paragraph, Text } = Typography;
@@ -39,6 +39,7 @@ const markdownComponents = {
             ? <code style={{ backgroundColor: '#f5f5f5', padding: '2px 6px', borderRadius: '3px', fontSize: '14px', color: '#d63384' }} {...props} />
             : <code style={{ display: 'block', backgroundColor: '#f5f5f5', padding: '12px', borderRadius: '6px', fontSize: '14px', overflow: 'auto', marginBottom: '12px' }} {...props} />,
 };
+
 
 const DeepResearch: React.FC = () => {
     const [topic, setTopic] = useState<string>('');
@@ -304,8 +305,33 @@ const DeepResearch: React.FC = () => {
                             {finishedTasks
                                 .filter(task => !task.name.startsWith('user'))
                                 .map((task, index) => {
+
                                     const stepInfo = STEP_TITLES[task.name];
                                     const isReport = task.name === 'writeReport';
+                                    const isSearch = task.name === 'search';
+
+                                    // 如果是搜索结果，尝试解析 JSON
+                                    let searchResults: any[] = [];
+                                    if (isSearch) {
+                                        console.log('[前端] 搜索任务:', task);
+                                        console.log('[前端] 搜索结果原文:', task.result);
+
+                                        // 检查结果是否为空
+                                        if (!task.result || task.result.trim() === '') {
+                                            console.warn('[前端] 搜索结果为空');
+                                            searchResults = [];
+                                        } else {
+                                            try {
+                                                searchResults = JSON.parse(task.result);
+                                                console.log('[前端] 解析后的搜索结果:', searchResults);
+                                            } catch (e) {
+                                                console.error('[前端] 解析搜索结果失败:', e);
+                                                console.error('[前端] 失败的文本:', task.result);
+                                                searchResults = [];
+                                            }
+                                        }
+                                    }
+
                                     return (
                                         <Card
                                             key={index}
@@ -324,7 +350,89 @@ const DeepResearch: React.FC = () => {
                                             }
                                         >
                                             <div style={{ padding: '12px 0' }}>
-                                                <ReactMarkdown components={markdownComponents}>{task.result}</ReactMarkdown>
+                                                {isSearch ? (
+                                                    searchResults.length > 0 ? (
+                                                        <List
+                                                            dataSource={searchResults}
+                                                            renderItem={(item: any) => (
+                                                                // <List.Item
+                                                                //     style={{
+                                                                //         borderBottom: '1px solid #f0f0f0',
+                                                                //         padding: '12px 0'
+                                                                //     }}
+                                                                //     extra={
+                                                                //         <Button
+                                                                //             type="link"
+                                                                //             icon={<LinkOutlined />}
+                                                                //             onClick={() => window.electronAPI.invoke('open-external-url', { url: item.url })}
+                                                                //         >
+                                                                //             打开链接
+                                                                //         </Button>
+                                                                //     }
+                                                                // >
+                                                                //     <List.Item.Meta
+                                                                //         title={
+                                                                //             <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                                                                //                 {item.keyword && (
+                                                                //                     <Tag color="blue" style={{ fontSize: '12px' }}>
+                                                                //                         {item.keyword}
+                                                                //                     </Tag>
+                                                                //                 )}
+                                                                //                 <Text strong style={{ fontSize: '15px' }}>
+                                                                //                     #{item.index} {item.title}
+                                                                //                 </Text>
+                                                                //             </Space>
+                                                                //         }
+                                                                //         description={
+                                                                //             <>
+                                                                //                 <Text type="secondary" style={{ fontSize: '13px', display: 'block', marginBottom: 8 }}>
+                                                                //                     {item.url}
+                                                                //                 </Text>
+                                                                //                 <Text style={{ fontSize: '14px', lineHeight: '1.6' }}>
+                                                                //                     {item.content}
+                                                                //                 </Text>
+                                                                //             </>
+                                                                //         }
+                                                                //     />
+                                                                // </List.Item>
+                                                                <Card style={{ marginBottom: 12, padding: 16 }}>
+                                                                    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                                                                        {/* 标题 + Tag */}
+                                                                        <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                                                                            {item.keyword && <Tag color="blue" style={{ fontSize: 12 }}>{item.keyword}</Tag>}
+                                                                            <Title level={4} style={{ margin: 0 }}>
+                                                                                #{item.index} {item.title}
+                                                                            </Title>
+                                                                        </Space>
+
+                                                                        {/* 描述内容 */}
+                                                                        <div style={{ marginTop: 8, flex: 1 }}>
+                                                                            <Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+                                                                                {item.url}
+                                                                            </Text>
+                                                                            <Text style={{ lineHeight: 1.6 }}>{item.content}</Text>
+                                                                        </div>
+
+                                                                        {/* 按钮靠右底部 */}
+                                                                        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+                                                                            <Button
+                                                                                type="link"
+                                                                                icon={<LinkOutlined />}
+                                                                                onClick={() => window.electronAPI.invoke("open-external-url", { url: item.url })}
+                                                                            >
+                                                                                打开链接
+                                                                            </Button>
+                                                                        </div>
+                                                                    </div>
+                                                                </Card>
+                                                            )}
+                                                        />
+                                                    ) : (
+                                                        <Text type="secondary">暂无搜索结果</Text>
+                                                    )
+                                                ) : (
+                                                    <ReactMarkdown components={markdownComponents}>{task.result}</ReactMarkdown>
+                                                )}
                                             </div>
                                             {isReport && completed && (
                                                 <Button

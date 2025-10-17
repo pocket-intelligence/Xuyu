@@ -149,20 +149,55 @@ export async function buildQuery(state: typeof ResearchState.State) {
     // 从已完成的任务中获取细节
     const details = getFinishedTaskResult(state, "userReviewDetails");
 
-    const prompt = `请根据研究主题"${state.topic}"和补充细节"${details}"，生成3-5个适合学术搜索的英文关键词。`;
+    const prompt = `请根据研究主题“${state.topic}”和补充细节“${details}”，生成 3-5 个适合搜索引擎的关键词。
+
+**要求：**
+1. 每个关键词要简洁，可以是中文或英文
+2. 关键词要超过足够宽泛，能搜索到相关结果
+3. 每个关键词长度不要超过 50 个字符
+4. **必须以 JSON 数组格式返回**，例：["keyword1", "keyword2", "keyword3"]
+5. **只返回 JSON 数组，不要其他内容**
+
+示例：
+主题：人工智能发展
+返回：["artificial intelligence trends", "AI development 2024", "人工智能应用"]
+`;
 
     const resp = await state.llm_client.chat.completions.create({
         model: state.llm_model,
         messages: [{ role: "user", content: prompt }],
     });
 
-    const result = resp.choices[0].message.content?.trim().replace(/\n/g, " ") || "";
-    console.log("[buildQuery] 关键词生成完成:", result);
+    let result = resp.choices[0].message.content?.trim() || "[]";
+    console.log("[buildQuery] 大模型返回:", result);
+
+    // 尝试解析 JSON，如果失败则使用默认值
+    let keywords: string[] = [];
+    try {
+        // 移除可能的 markdown 代码块标记
+        result = result.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        keywords = JSON.parse(result);
+
+        if (!Array.isArray(keywords) || keywords.length === 0) {
+            throw new Error("解析结果不是数组或为空");
+        }
+
+        console.log("[buildQuery] 解析后的关键词:", keywords);
+    } catch (e) {
+        console.error("[buildQuery] 解析关键词失败:", e);
+        // 如果解析失败，使用主题作为默认关键词
+        keywords = [state.topic];
+        console.log("[buildQuery] 使用默认关键词:", keywords);
+    }
+
+    // 保存为 JSON 字符串
+    const keywordsJson = JSON.stringify(keywords);
+    console.log("[buildQuery] 关键词生成完成:", keywordsJson);
 
     return {
         finished_tasks: [
             ...state.finished_tasks,
-            { name: "buildQuery", result: result }
+            { name: "buildQuery", result: keywordsJson }
         ],
         input_tokens: resp.usage?.prompt_tokens ?? 0,
         output_tokens: resp.usage?.completion_tokens ?? 0,
@@ -180,11 +215,17 @@ export async function userChooseFormat(state: typeof ResearchState.State) {
     console.log("[userChooseFormat] 等待用户选择输出格式...");
 
     // 从已完成的任务中获取查询关键词
-    const query = getFinishedTaskResult(state, "buildQuery");
+    const keywordsJson = getFinishedTaskResult(state, "buildQuery");
+    let keywords: string[] = [];
+    try {
+        keywords = JSON.parse(keywordsJson);
+    } catch (e) {
+        keywords = [state.topic];
+    }
 
     // 使用 interrupt 暂停执行，等待用户选择格式
     const userInput = interrupt({
-        query: query,
+        query: keywords.join(", "),
         prompt: "请选择输出格式（markdown/plain/json，默认 markdown）"
     });
 
@@ -216,27 +257,81 @@ export async function searchSearxng(state: typeof ResearchState.State) {
     console.log("[searchSearxng] 执行搜索...");
 
     // 从已完成的任务中获取查询关键词
-    const query = getFinishedTaskResult(state, "buildQuery");
-    if (!query) {
+    const keywordsJson = getFinishedTaskResult(state, "buildQuery");
+    if (!keywordsJson) {
         console.error("[searchSearxng] 未找到查询关键词");
-        return {};
+        return {
+            finished_tasks: [
+                ...state.finished_tasks,
+                { name: "search", result: JSON.stringify([]) }
+            ],
+        };
     }
 
+    // 解析关键词数组
+    let keywords: string[] = [];
+    try {
+        keywords = JSON.parse(keywordsJson);
+        if (!Array.isArray(keywords) || keywords.length === 0) {
+            throw new Error("关键词不是数组或为空");
+        }
+    } catch (e) {
+        console.error("[searchSearxng] 解析关键词失败:", e);
+        keywords = [state.topic]; // 使用主题作为默认关键词
+    }
+
+    console.log("[searchSearxng] 搜索关键词数组:", keywords);
+
+    // 循环搜索每个关键词
+    const allResults: any[] = [];
     const searxUrl = "http://localhost:9527/search";
-    const params = new URLSearchParams({ q: query, format: "json" });
-    const resp = await fetch(`${searxUrl}?${params.toString()}`);
-    const data = await resp.json();
 
-    const results = (data.results || []).slice(0, 5).map(
-        (r: any, i: number) => `#${i + 1}: ${r.title}\n${r.url}\n${r.content}`
-    );
+    for (let i = 0; i < keywords.length; i++) {
+        const keyword = keywords[i];
+        console.log(`[searchSearxng] 搜索第 ${i + 1}/${keywords.length} 个关键词: ${keyword}`);
 
-    console.log("[searchSearxng] 搜索完成，结果数量:", results.length);
+        try {
+            const params = new URLSearchParams({ q: keyword, format: "json" });
+            const fullUrl = `${searxUrl}?${params.toString()}`;
+            console.log("[searchSearxng] 请求URL:", fullUrl);
+
+            const resp = await fetch(fullUrl);
+            const data = await resp.json();
+
+            console.log(`[searchSearxng] 第 ${i + 1} 个关键词返回结果数：`, data.results?.length || 0);
+
+            // 取每个关键词的前 3 条结果
+            const results = (data.results || []).slice(0, 3).map(
+                (r: any) => ({
+                    keyword: keyword,
+                    title: r.title || '无标题',
+                    url: r.url || '',
+                    content: r.content || r.snippet || ''
+                })
+            );
+
+            allResults.push(...results);
+        } catch (error: any) {
+            console.error(`[searchSearxng] 搜索关键词 "${keyword}" 失败:`, error);
+            // 继续搜索下一个关键词
+        }
+    }
+
+    // 为所有结果添加索引
+    const indexedResults = allResults.map((r, i) => ({
+        index: i + 1,
+        ...r
+    }));
+
+    console.log("[searchSearxng] 搜索完成，总结果数:", indexedResults.length);
+    console.log("[searchSearxng] 处理后的结果:", indexedResults);
+
+    const resultJson = JSON.stringify(indexedResults, null, 2);
 
     return {
         finished_tasks: [
             ...state.finished_tasks,
-            { name: "search", result: results.join("\n\n") }
+            { name: "search", result: resultJson }
         ],
     };
 }
@@ -253,7 +348,19 @@ export async function writeReport(state: typeof ResearchState.State) {
 
     // 从已完成的任务中获取所有需要的数据
     const details = getFinishedTaskResult(state, "userReviewDetails");
-    const searchResults = getFinishedTaskResult(state, "search");
+    const searchResultsJson = getFinishedTaskResult(state, "search");
+
+    // 解析 JSON 并格式化为文本
+    let searchResultsText = "";
+    try {
+        const results = JSON.parse(searchResultsJson);
+        searchResultsText = results.map((r: any) =>
+            `#${r.index}: ${r.title}\n${r.url}\n${r.content}`
+        ).join("\n\n");
+    } catch (e) {
+        // 如果解析失败，直接使用原文本
+        searchResultsText = searchResultsJson;
+    }
 
     const formatHint =
         state.output_format === "markdown"
@@ -267,7 +374,7 @@ export async function writeReport(state: typeof ResearchState.State) {
 主题：${state.topic}
 细节：${details}
 搜索结果：
-${searchResults}
+${searchResultsText}
 
 要求：
 - 用简洁、逻辑清晰的中文撰写

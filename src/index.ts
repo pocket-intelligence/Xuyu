@@ -485,6 +485,23 @@ ipcMain.on("destroy-session", async (event, params: { sessionId: string }) => {
   }
 });
 
+// 处理打开外部 URL 请求
+ipcMain.handle("open-external-url", async (event, params: { url: string }) => {
+  console.log("收到打开外部 URL 请求:", params.url);
+
+  try {
+    const { shell } = require('electron');
+    await shell.openExternal(params.url);
+    return { success: true };
+  } catch (error: any) {
+    console.error("打开 URL 失败:", error);
+    return {
+      success: false,
+      message: "打开 URL 失败: " + error.message
+    };
+  }
+});
+
 
 
 

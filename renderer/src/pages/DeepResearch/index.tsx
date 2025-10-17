@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Input, Button, Card, Typography, Spin, message, Steps, Space } from 'antd';
-import { SearchOutlined, RobotOutlined, SendOutlined } from '@ant-design/icons';
+import { Input, Button, Card, Typography, Spin, message, Space, Skeleton } from 'antd';
+import { SearchOutlined, RobotOutlined, SendOutlined, LoadingOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 
 const { Title, Paragraph, Text } = Typography;
@@ -15,15 +15,30 @@ interface ProgressUpdate {
     };
 }
 
-// 步骤定义
-const STEPS = [
-    { title: '询问细节', description: '生成研究细节建议' },
-    { title: '审查细节', description: '用户审查研究细节' },
-    { title: '构建查询', description: '生成搜索关键词' },
-    { title: '选择格式', description: '用户选择输出格式' },
-    { title: '执行搜索', description: '搜索相关资料' },
-    { title: '生成报告', description: '生成研究报告' },
-];
+
+// 步骤标题映射
+const STEP_TITLES: Record<string, { title: string; icon: string; color: string }> = {
+    askDetails: { title: '研究要点分析', icon: '💡', color: '#1890ff' },
+    buildQuery: { title: '搜索关键词生成', icon: '🔍', color: '#52c41a' },
+    search: { title: '搜索结果', icon: '🌐', color: '#13c2c2' },
+    writeReport: { title: '研究报告', icon: '📝', color: '#722ed1' },
+};
+
+// Markdown 自定义组件样式
+const markdownComponents = {
+    h1: ({ node, ...props }: any) => <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginTop: '16px', marginBottom: '12px', borderBottom: '2px solid #e8e8e8', paddingBottom: '8px' }} {...props} />,
+    h2: ({ node, ...props }: any) => <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginTop: '14px', marginBottom: '10px', borderBottom: '1px solid #f0f0f0', paddingBottom: '6px' }} {...props} />,
+    h3: ({ node, ...props }: any) => <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginTop: '12px', marginBottom: '8px' }} {...props} />,
+    p: ({ node, ...props }: any) => <p style={{ marginBottom: '12px', lineHeight: '1.8' }} {...props} />,
+    ul: ({ node, ...props }: any) => <ul style={{ marginLeft: '24px', marginBottom: '12px', lineHeight: '1.8' }} {...props} />,
+    ol: ({ node, ...props }: any) => <ol style={{ marginLeft: '24px', marginBottom: '12px', lineHeight: '1.8' }} {...props} />,
+    li: ({ node, ...props }: any) => <li style={{ marginBottom: '6px' }} {...props} />,
+    strong: ({ node, ...props }: any) => <strong style={{ fontWeight: 600, color: '#262626' }} {...props} />,
+    code: ({ node, inline, ...props }: any) =>
+        inline
+            ? <code style={{ backgroundColor: '#f5f5f5', padding: '2px 6px', borderRadius: '3px', fontSize: '14px', color: '#d63384' }} {...props} />
+            : <code style={{ display: 'block', backgroundColor: '#f5f5f5', padding: '12px', borderRadius: '6px', fontSize: '14px', overflow: 'auto', marginBottom: '12px' }} {...props} />,
+};
 
 const DeepResearch: React.FC = () => {
     const [topic, setTopic] = useState<string>('');
@@ -36,6 +51,7 @@ const DeepResearch: React.FC = () => {
     const [report, setReport] = useState<string>('');
     const [completed, setCompleted] = useState<boolean>(false);
     const [finishedTasks, setFinishedTasks] = useState<Array<{ name: string; result: string }>>([]);
+    const [currentExecutingStep, setCurrentExecutingStep] = useState<string | null>(null);
 
     const isProcessingRef = useRef(false);
 
@@ -54,13 +70,13 @@ const DeepResearch: React.FC = () => {
                 setFinishedTasks(progress.data.state.finished_tasks);
             }
 
-            // 检查是否是中断数据（需要用户输入）
-            if (progress.data && (progress.data.question || progress.data.query || progress.data.prompt)) {
-                console.log('[前端] 检测到中断数据，需要用户输入:', progress.data);
-                setInterruptData(progress.data);
-                setLoading(false);
-                isProcessingRef.current = false;
+            // 设置当前正在执行的步骤
+            if (progress.data?.nodeName) {
+                setCurrentExecutingStep(progress.data.nodeName);
             }
+
+            // 不再从进度回调中设置 interruptData，因为会导致显示空数据
+            // interruptData 直接从 invoke 返回的 inputPrompt 获取
         };
 
         window.electronAPI.on('agent-research-progress', handleProgress);
@@ -90,6 +106,7 @@ const DeepResearch: React.FC = () => {
         setFinishedTasks([]);
         setStepDescription('正在创建研究会话...');
         setInterruptData(null);
+        setCurrentExecutingStep(null);
 
         try {
             console.log('[前端] 创建研究会话...');
@@ -123,6 +140,7 @@ const DeepResearch: React.FC = () => {
             if (stepResult.needsInput) {
                 console.log('[前端] 需要用户输入:', stepResult.inputPrompt);
                 setInterruptData(stepResult.inputPrompt);
+                setCurrentExecutingStep(null);
                 setLoading(false);
                 isProcessingRef.current = false;
             } else if (stepResult.completed) {
@@ -130,6 +148,7 @@ const DeepResearch: React.FC = () => {
                 setCompleted(true);
                 setReport(stepResult.state.report || '没有生成报告');
                 setStepDescription('研究完成！');
+                setCurrentExecutingStep(null);
                 setLoading(false);
                 isProcessingRef.current = false;
                 message.success('研究完成！');
@@ -159,6 +178,7 @@ const DeepResearch: React.FC = () => {
         setLoading(true);
         const currentInterruptData = interruptData;
         setInterruptData(null);
+        setCurrentExecutingStep(null);
 
         try {
             console.log('[前端] 提交用户输入并恢复会话...');
@@ -195,6 +215,7 @@ const DeepResearch: React.FC = () => {
             if (resumeResult.needsInput) {
                 console.log('[前端] 需要用户输入:', resumeResult.inputPrompt);
                 setInterruptData(resumeResult.inputPrompt);
+                setCurrentExecutingStep(null);
                 setLoading(false);
                 isProcessingRef.current = false;
             } else if (resumeResult.completed) {
@@ -202,6 +223,7 @@ const DeepResearch: React.FC = () => {
                 setCompleted(true);
                 setReport(resumeResult.state.report || '没有生成报告');
                 setStepDescription('研究完成！');
+                setCurrentExecutingStep(null);
                 setLoading(false);
                 isProcessingRef.current = false;
                 message.success('研究完成！');
@@ -228,6 +250,7 @@ const DeepResearch: React.FC = () => {
         setReport('');
         setCompleted(false);
         setFinishedTasks([]);
+        setCurrentExecutingStep(null);
         setLoading(false);
         isProcessingRef.current = false;
     };
@@ -236,9 +259,13 @@ const DeepResearch: React.FC = () => {
         <div className="deep-research-container">
             <Card className="research-card">
                 <div className="header">
-                    <RobotOutlined className="icon" />
-                    <Title level={2}>深度研究智能体</Title>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <RobotOutlined style={{ fontSize: 32, marginRight: 8 }} />
+                        <Title level={2} style={{ margin: 0 }}>深度研究智能体</Title>
+                    </div>
                 </div>
+
+                <div style={{ marginTop: 16, marginBottom: 16 }}></div>
 
                 {!sessionId ? (
                     <>
@@ -253,6 +280,7 @@ const DeepResearch: React.FC = () => {
                                 prefix={<SearchOutlined />}
                                 disabled={loading}
                             />
+                            <div style={{ marginTop: 16, marginBottom: 16 }}></div>
                             <Button
                                 type="primary"
                                 size="large"
@@ -272,76 +300,63 @@ const DeepResearch: React.FC = () => {
                                 <Text>{topic}</Text>
                             </div>
 
-                            <div className="progress-section">
-                                <Steps
-                                    current={Math.min(finishedTasks.length, STEPS.length - 1)}
-                                    items={STEPS}
-                                    size="small"
-                                />
-                                <div className="step-description">
-                                    {loading && <Spin size="small" />}
-                                    <Text type="secondary">{stepDescription}</Text>
-                                </div>
-                            </div>
+                            {/* 显示所有任务（统一使用 Markdown 渲染） */}
+                            {finishedTasks
+                                .filter(task => !task.name.startsWith('user'))
+                                .map((task, index) => {
+                                    const stepInfo = STEP_TITLES[task.name];
+                                    const isReport = task.name === 'writeReport';
+                                    return (
+                                        <Card
+                                            key={index}
+                                            size="small"
+                                            style={{
+                                                borderLeft: `4px solid ${stepInfo?.color || '#1890ff'}`,
+                                                backgroundColor: isReport ? '#f9f0ff' : '#fafafa'
+                                            }}
+                                            title={
+                                                <Space>
+                                                    <CheckCircleOutlined style={{ color: stepInfo?.color || '#52c41a' }} />
+                                                    <Text strong style={{ fontSize: isReport ? '16px' : '14px' }}>
+                                                        {stepInfo?.icon || '✓'} {stepInfo?.title || task.name}
+                                                    </Text>
+                                                </Space>
+                                            }
+                                        >
+                                            <div style={{ padding: '12px 0' }}>
+                                                <ReactMarkdown components={markdownComponents}>{task.result}</ReactMarkdown>
+                                            </div>
+                                            {isReport && completed && (
+                                                <Button
+                                                    onClick={handleReset}
+                                                    size="large"
+                                                    style={{ marginTop: 16 }}
+                                                >
+                                                    开始新研究
+                                                </Button>
+                                            )}
+                                        </Card>
+                                    );
+                                })}
 
-                            {/* 显示已完成的任务 */}
-                            {finishedTasks.length > 0 && (
-                                <Card type="inner" title="执行记录" size="small">
-                                    {finishedTasks.map((task, index) => (
-                                        <div key={index} style={{ marginBottom: 8 }}>
-                                            <Text strong>{task.name}:</Text>
-                                            <Paragraph
-                                                style={{ marginLeft: 16, marginBottom: 8 }}
-                                                ellipsis={{ rows: 2, expandable: true, symbol: '展开' }}
-                                            >
-                                                {task.result}
-                                            </Paragraph>
-                                        </div>
-                                    ))}
-                                </Card>
-                            )}
-
-                            {/* 用户输入区域 */}
-                            {/* AI建议/查询显示区域 - 只显示内容，不包含输入框 */}
-                            {interruptData && !completed && (
+                            {/* 显示当前正在执行的步骤 - loading 动效 */}
+                            {currentExecutingStep && !completed && !interruptData && (
                                 <Card
-                                    type="inner"
-                                    title={interruptData.question ? "AI 建议" : "搜索关键词"}
-                                    style={{ backgroundColor: '#f0f9ff', borderColor: '#1890ff' }}
+                                    size="small"
+                                    style={{
+                                        borderLeft: `4px solid ${STEP_TITLES[currentExecutingStep]?.color || '#faad14'}`,
+                                        backgroundColor: '#fffbf0'
+                                    }}
+                                    title={
+                                        <Space>
+                                            <Spin indicator={<LoadingOutlined spin />} />
+                                            <Text strong style={{ color: STEP_TITLES[currentExecutingStep]?.color || '#faad14' }}>
+                                                {STEP_TITLES[currentExecutingStep]?.icon || '⏳'} {STEP_TITLES[currentExecutingStep]?.title || currentExecutingStep}
+                                            </Text>
+                                        </Space>
+                                    }
                                 >
-                                    {interruptData.question && (
-                                        <div className="interrupt-content">
-                                            <Paragraph style={{ whiteSpace: 'pre-wrap', fontSize: '15px', lineHeight: '1.8' }}>
-                                                {interruptData.question}
-                                            </Paragraph>
-                                            <Paragraph type="secondary" style={{ marginTop: 12 }}>
-                                                💡 {interruptData.prompt}
-                                            </Paragraph>
-                                        </div>
-                                    )}
-                                    {interruptData.query && (
-                                        <div className="interrupt-content">
-                                            <Paragraph style={{ fontSize: '15px', fontWeight: 500 }}>
-                                                {interruptData.query}
-                                            </Paragraph>
-                                            <Paragraph type="secondary" style={{ marginTop: 12 }}>
-                                                💡 {interruptData.prompt}
-                                            </Paragraph>
-                                        </div>
-                                    )}
-                                </Card>
-                            )}
-
-                            {/* 研究报告 */}
-                            {completed && report && (
-                                <Card type="inner" title="研究报告" className="report-section">
-                                    <ReactMarkdown>{report}</ReactMarkdown>
-                                    <Button
-                                        onClick={handleReset}
-                                        style={{ marginTop: 16 }}
-                                    >
-                                        开始新研究
-                                    </Button>
+                                    <Skeleton active paragraph={{ rows: 2 }} />
                                 </Card>
                             )}
                         </Space>

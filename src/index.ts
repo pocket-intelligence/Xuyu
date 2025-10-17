@@ -19,7 +19,6 @@ const BROWSER_PATH = localChromePath();
 let mainWindow: BrowserWindow | null = null;
 let isDownloading = false;
 let lastProgress = 0;
-let progressThrottleTimer: NodeJS.Timeout | null = null;
 
 function setMainWindow(window: any) {
   mainWindow = window;

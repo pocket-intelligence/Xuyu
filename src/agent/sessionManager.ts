@@ -106,97 +106,94 @@ export async function executeNextStep(
     ];
 
     // 找到下一个需要执行的步骤
+    let foundStep: typeof steps[0] | null = null;
     for (const step of steps) {
         if (!finishedTaskNames.includes(step.name)) {
-            console.log(`[SessionManager] 下一步: ${step.name}`);
-
-            // 如果是需要用户输入的步骤，检查是否有前置数据
-            if (step.needsInput) {
-                // 获取前一步的结果
-                let promptData: any = {};
-                if (step.name === 'userReviewDetails') {
-                    const askDetailsResult = state.finished_tasks.find(t => t.name === 'askDetails');
-                    if (askDetailsResult) {
-                        promptData = {
-                            question: askDetailsResult.result,
-                            prompt: "是否修改研究细节或主题？如果满意请直接继续，否则请提供新的细节。"
-                        };
-                    }
-                } else if (step.name === 'userChooseFormat') {
-                    const buildQueryResult = state.finished_tasks.find(t => t.name === 'buildQuery');
-                    if (buildQueryResult) {
-                        promptData = {
-                            query: buildQueryResult.result,
-                            prompt: "请选择输出格式（markdown/plain/json，默认 markdown）"
-                        };
-                    }
-                }
-
-                // 发送进度回调
-                if (progressCallback) {
-                    const stepInfo = STEP_INFO[step.name] || {
-                        title: step.name,
-                        description: `等待用户输入...`
-                    };
-                    progressCallback(finishedTaskNames.length, promptData, stepInfo);
-                }
-
-                // 返回，等待用户输入
-                return {
-                    completed: false,
-                    needsInput: true,
-                    inputPrompt: promptData,
-                    state: session.state
-                };
-            }
-
-            // 执行不需要用户输入的步骤
-            try {
-                // 发送进度回调
-                if (progressCallback) {
-                    const stepInfo = STEP_INFO[step.name] || {
-                        title: step.name,
-                        description: `正在执行 ${step.name}...`
-                    };
-                    progressCallback(finishedTaskNames.length, { nodeName: step.name }, stepInfo);
-                }
-
-                // 执行对应的节点函数
-                let result: any = {};
-                if (step.name === 'askDetails') {
-                    const { askDetails } = await import('./agent');
-                    result = await askDetails(session.state);
-                } else if (step.name === 'buildQuery') {
-                    const { buildQuery } = await import('./agent');
-                    result = await buildQuery(session.state);
-                } else if (step.name === 'search') {
-                    const { searchSearxng } = await import('./agent');
-                    result = await searchSearxng(session.state);
-                } else if (step.name === 'writeReport') {
-                    const { writeReport } = await import('./agent');
-                    result = await writeReport(session.state);
-                }
-
-                // 更新状态
-                session.state = { ...session.state, ...result };
-                session.lastUpdated = Date.now();
-
-                // 继续下一步
-                continue;
-            } catch (error: any) {
-                console.error(`[SessionManager] 执行 ${step.name} 失败:`, error);
-                throw error;
-            }
+            foundStep = step;
+            break;
         }
     }
 
-    // 所有步骤都完成
-    console.log(`[SessionManager] 所有步骤完成`);
-    return {
-        completed: true,
-        needsInput: false,
-        state: session.state
-    };
+    if (!foundStep) {
+        // 所有步骤都完成
+        console.log(`[SessionManager] 所有步骤完成`);
+        return {
+            completed: true,
+            needsInput: false,
+            state: session.state
+        };
+    }
+
+    console.log(`[SessionManager] 下一步: ${foundStep.name}`);
+
+    // 如果是需要用户输入的步骤，检查是否有前置数据
+    if (foundStep.needsInput) {
+        // 获取前一步的结果
+        let promptData: any = {};
+        if (foundStep.name === 'userReviewDetails') {
+            const askDetailsResult = state.finished_tasks.find(t => t.name === 'askDetails');
+            if (askDetailsResult) {
+                promptData = {
+                    question: askDetailsResult.result,
+                    prompt: "是否修改研究细节或主题？如果满意请直接继续，否则请提供新的细节。"
+                };
+            }
+        } else if (foundStep.name === 'userChooseFormat') {
+            const buildQueryResult = state.finished_tasks.find(t => t.name === 'buildQuery');
+            if (buildQueryResult) {
+                promptData = {
+                    query: buildQueryResult.result,
+                    prompt: "请选择输出格式（``/plain/json，默认 ``）"
+                };
+            }
+        }
+
+        // 返回，等待用户输入
+        return {
+            completed: false,
+            needsInput: true,
+            inputPrompt: promptData,
+            state: session.state
+        };
+    }
+
+    // 执行不需要用户输入的步骤
+    try {
+        // 发送进度回调
+        if (progressCallback) {
+            const stepInfo = STEP_INFO[foundStep.name] || {
+                title: foundStep.name,
+                description: `正在执行 ${foundStep.name}...`
+            };
+            progressCallback(finishedTaskNames.length, { nodeName: foundStep.name }, stepInfo);
+        }
+
+        // 执行对应的节点函数
+        let result: any = {};
+        if (foundStep.name === 'askDetails') {
+            const { askDetails } = await import('./agent');
+            result = await askDetails(session.state);
+        } else if (foundStep.name === 'buildQuery') {
+            const { buildQuery } = await import('./agent');
+            result = await buildQuery(session.state);
+        } else if (foundStep.name === 'search') {
+            const { searchSearxng } = await import('./agent');
+            result = await searchSearxng(session.state);
+        } else if (foundStep.name === 'writeReport') {
+            const { writeReport } = await import('./agent');
+            result = await writeReport(session.state);
+        }
+
+        // 更新状态
+        session.state = { ...session.state, ...result };
+        session.lastUpdated = Date.now();
+
+        // 再次调用 executeNextStep 继续下一步（递归调用）
+        return await executeNextStep(sessionId, progressCallback);
+    } catch (error: any) {
+        console.error(`[SessionManager] 执行 ${foundStep.name} 失败:`, error);
+        throw error;
+    }
 }
 
 /**
@@ -245,7 +242,7 @@ export async function submitUserInput(
         const askDetailsResult = session.state.finished_tasks.find(t => t.name === 'askDetails');
         result = input.details || askDetailsResult?.result || '';
     } else if (currentStep === 'userChooseFormat') {
-        result = input.output_format || 'markdown';
+        result = input.output_format || '``';
         session.state.output_format = result as any;
     }
 

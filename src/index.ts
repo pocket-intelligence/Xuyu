@@ -7,7 +7,7 @@ import { DeepResearchScraper } from './DeepResearchScraper';
 import * as fs from 'fs';
 import path from 'path';
 import { readConfig, saveConfig, SystemConfig } from './configManager';
-import { AgentService } from './services/AgentService';
+import { AgentService, ResearchOutput } from './services/AgentService';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -362,11 +362,12 @@ ipcMain.on("agent-research", async (event, params: { topic: string }) => {
   try {
     const result = await AgentService.conductResearch(
       params.topic,
-      (step, data) => {
+      (step: number, data: ResearchOutput, stepInfo?: { title: string; description: string }) => {
         // 发送进度更新
         event.reply("agent-research-progress", {
           step,
-          data
+          data,
+          stepInfo
         });
       }
     );

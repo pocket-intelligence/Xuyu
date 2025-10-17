@@ -1,7 +1,7 @@
 {
   "name": "deep-research",
   "productName": "Xuyu",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "吾尝终日而思，不如须臾之所学",
   "main": ".webpack/main",
   "scripts": {

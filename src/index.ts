@@ -387,6 +387,24 @@ ipcMain.on("agent-research", async (event, params: { topic: string }) => {
   }
 });
 
+
+ipcMain.handle("ask-user", async (_event, question: string) => {
+  console.log("🧩 askUser question:", question);
+
+  // 通知前端显示弹窗
+  // 主进程等待渲染进程返回用户输入
+  return new Promise<string>((resolve) => {
+    // 发送事件给所有窗口
+    const win = require("electron").BrowserWindow.getAllWindows()[0];
+    win.webContents.send("show-ask-user", question);
+
+    // 等待渲染进程返回输入
+    ipcMain.once("ask-user-response", (_evt, answer: string) => {
+      resolve(answer);
+    });
+  });
+});
+
 app.whenReady().then(async () => {
   // 初始化数据库
   const dbInitialized = await initializeDatabase();

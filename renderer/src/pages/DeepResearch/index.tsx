@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { Card, Typography, Input, Button, Space, Steps, Spin, Alert, message } from 'antd';
+import { Card, Typography, Input, Button, Space, Spin, Alert, message } from 'antd';
 import { SearchOutlined, FileTextOutlined } from '@ant-design/icons';
 import ResearchOutputRenderer from '../../components/ResearchOutput/ResearchOutputRenderer';
 
 const { Title, Text } = Typography;
-const { Step } = Steps;
 
 // 定义输出接口
 interface ResearchOutput {
@@ -100,7 +99,7 @@ const DeepResearchPage: React.FC = () => {
     };
 
     // 处理用户输入提交
-    const handleUserInputSubmit = (input: string) => {
+    const handleUserInputSubmit = () => {
         // 这里应该发送用户输入到后端继续处理
         // 暂时只是关闭输入状态
         setWaitingForInput(false);
@@ -173,20 +172,25 @@ const DeepResearchPage: React.FC = () => {
                 </Card>
             )}
 
-            {/* 动态步骤进度条 - 只在研究开始后显示
+            {/* 动态步骤进度条 - 只在研究开始后显示 */}
             {currentStep >= 0 && stepsInfo.length > 0 && !waitingForInput && (
                 <Card className="mt-6">
-                    <Steps current={currentStep} className="mb-6">
-                        {stepsInfo.map((step, index) => (
-                            <Step
-                                key={index}
-                                title={step.title}
-                                description={step.description}
-                            />
-                        ))}
-                    </Steps>
+                    {stepsInfo.map((step, index) => (
+                        <div key={index} className="flex items-center mb-2">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${index < currentStep ? 'bg-green-500 text-white' :
+                                    index === currentStep ? 'bg-blue-500 text-white' :
+                                        'bg-gray-200 text-gray-500'
+                                }`}>
+                                {index + 1}
+                            </div>
+                            <div>
+                                <div className="font-medium">{step.title}</div>
+                                <div className="text-sm text-gray-500">{step.description}</div>
+                            </div>
+                        </div>
+                    ))}
                 </Card>
-            )} */}
+            )}
 
             {/* 动态步骤内容 - 根据实际步骤动态渲染 */}
             {!waitingForInput && stepsInfo.map((stepInfo, index) => (

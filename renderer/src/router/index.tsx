@@ -1,13 +1,22 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createHashRouter } from 'react-router-dom';
 import Error from "./Error";
 import AppLayout from "../layout";
 
-export const router = createBrowserRouter([
+// 页面组件
+import DeepResearchPage from "../pages/DeepResearch/index";
+import SearchRecordsPage from "../pages/SearchRecords/index";
+import SystemConfigPage from "../pages/SystemConfig/index";
+import ModelRecordsPage from "../pages/ModelRecords/index";
+
+export const router = createHashRouter([
     {
         element: <AppLayout />,
         children: [
-            { index: true, element: <div /> },  // 默认路由，匹配 "/"
-            { path: '/dashboard', element: <div /> },
+            { index: true, element: <DeepResearchPage /> },  // 默认路由，匹配 "/"
+            { path: '/', element: <DeepResearchPage /> },
+            { path: '/search-records', element: <SearchRecordsPage /> },
+            { path: '/system-config', element: <SystemConfigPage /> },
+            { path: '/model-records', element: <ModelRecordsPage /> },
         ],
     },
     { path: '*', element: <Error /> },

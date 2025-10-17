@@ -71,3 +71,29 @@ export default defineConfig([
   },
 ])
 ```
+# Deep Research Renderer  
+  
+"## 前端架构"  
+  
+"### 技术栈"  
+"- React + TypeScript"  
+"- Ant Design"  
+"- Tailwind CSS"  
+"- React Router"  
+  
+"### 目录结构"  
+  
+"```"  
+"src/"  
+"├── components/          # 可复用组件"  
+"├── layout/              # 布局组件"  
+"├── pages/               # 页面组件"  
+"│   ├── DeepResearch/    # 深度研究模块"  
+"│   ├── SearchRecords/   # 检索记录模块"  
+"│   ├── SystemConfig/    # 系统配置模块"  
+"│   └── ModelRecords/    # 大模型调用记录模块"  
+"├── router/              # 路由配置"  
+"├── App.tsx              # 应用入口"  
+"├── main.tsx             # 渲染入口"  
+"└── index.css            # 样式入口"  
+"```" 

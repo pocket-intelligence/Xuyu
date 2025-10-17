@@ -28,7 +28,7 @@ export class DeepResearchScraper {
         this.options.searxInstance ||= "http://localhost:9527/"; // 可替换为你的 SearXNG 实例
         this.options.outputDir ||= path.resolve(__dirname, "../deepresearch_output");
         this.options.maxResults ||= 5;
-        this.options.headless ??= true;
+        this.options.headless ??= false;
 
         if (!fs.existsSync(this.options.outputDir)) {
             fs.mkdirSync(this.options.outputDir, { recursive: true });

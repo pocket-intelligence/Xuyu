@@ -78,10 +78,10 @@ export class DeepResearchScraper {
         try {
             const page = await this.browserContext!.newPage();
             console.log(`[DeepResearch] 打开页面: ${url}`);
-            await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+            await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
 
             // 延迟几秒等待页面加载
-            await new Promise((r) => setTimeout(r, 3000));
+            await new Promise((r) => setTimeout(r, 10_000));
 
             const filePath = path.resolve(
                 this.options.outputDir!,

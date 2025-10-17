@@ -4,9 +4,17 @@ import { app } from 'electron';
 
 // 定义配置接口
 export interface SystemConfig {
-    apiUrl?: string;
-    modelName?: string;
-    apiKey?: string;
+    // 语言模型配置
+    llmApiUrl?: string;
+    llmModelName?: string;
+    llmApiKey?: string;
+
+    // 多模态模型配置（用于图像理解和OCR）
+    multimodalApiUrl?: string;
+    multimodalModelName?: string;
+    multimodalApiKey?: string;
+
+    // SearxNG配置
     searxngUrl?: string;
 }
 

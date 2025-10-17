@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Typography, Form, Input, Button, Space, message } from 'antd';
+import { Card, Typography, Form, Input, Button, Space, message, Divider } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
@@ -49,28 +49,55 @@ const SystemConfigPage: React.FC = () => {
             </Space>
 
             <Card className="mt-6">
-                <Title level={4}>大模型配置</Title>
+                <Title level={4}>语言模型配置</Title>
                 <Form form={form} layout="vertical">
                     <Form.Item
                         label="API地址"
-                        name="apiUrl"
+                        name="llmApiUrl"
                         rules={[{ required: true, message: '请输入API地址' }]}
                     >
-                        <Input placeholder="请输入大模型API地址" />
+                        <Input placeholder="请输入语言模型API地址" />
                     </Form.Item>
                     <Form.Item
                         label="模型名称"
-                        name="modelName"
+                        name="llmModelName"
                         rules={[{ required: true, message: '请输入模型名称' }]}
                     >
-                        <Input placeholder="请输入模型名称" />
+                        <Input placeholder="请输入语言模型名称" />
                     </Form.Item>
                     <Form.Item
                         label="API密钥"
-                        name="apiKey"
+                        name="llmApiKey"
                         rules={[{ required: true, message: '请输入API密钥' }]}
                     >
-                        <Input.Password placeholder="请输入API密钥" />
+                        <Input.Password placeholder="请输入语言模型API密钥" />
+                    </Form.Item>
+                </Form>
+            </Card>
+
+            <Card className="mt-6">
+                <Title level={4}>多模态模型配置（用于图像理解和OCR）</Title>
+                <Form form={form} layout="vertical">
+                    <Form.Item
+                        label="API地址"
+                        name="multimodalApiUrl"
+                        rules={[{ required: true, message: '请输入API地址' }]}
+                    >
+                        <Input placeholder="请输入多模态模型API地址" />
+                    </Form.Item>
+                    <Form.Item
+                        label="模型名称"
+                        name="multimodalModelName"
+                        rules={[{ required: true, message: '请输入模型名称' }]}
+                    >
+                        <Input placeholder="请输入多模态模型名称" />
+                    </Form.Item>
+                    <Form.Item
+                        label="API密钥"
+                        name="multimodalApiKey"
+                        rules={[{ required: true, message: '请输入API密钥' }]}
+                    >
+                        <Input.Password placeholder="请输入多模态模型API密钥" />
                     </Form.Item>
                 </Form>
             </Card>

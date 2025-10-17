@@ -44,6 +44,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
         ipcRenderer.once("save-config-result", (_, result) => callback(result));
     },
 
+    // 智能体研究相关
+    startAgentResearch: (params: { topic: string }, callback: (result: { success: boolean; message?: string; data?: any }) => void) => {
+        ipcRenderer.send("agent-research", params);
+        ipcRenderer.once("agent-research-result", (_, result) => callback(result));
+    },
+    onAgentResearchProgress: (callback: (data: { step: number; data: any }) => void) => {
+        ipcRenderer.on("agent-research-progress", (_, data) => callback(data));
+    },
+
     // 通用IPC方法
     on: (channel: string, func: (...args: any[]) => void) => {
         ipcRenderer.on(channel, (_, ...args) => func(...args));

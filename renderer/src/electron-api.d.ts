@@ -19,6 +19,10 @@ export interface IElectronAPI {
     getConfig: (callback: (result: { success: boolean; message?: string; data?: any }) => void) => void;
     saveConfig: (params: { config: any }, callback: (result: { success: boolean; message?: string }) => void) => void;
 
+    // 智能体研究相关
+    startAgentResearch: (params: { topic: string }, callback: (result: { success: boolean; message?: string; data?: any }) => void) => void;
+    onAgentResearchProgress: (callback: (data: { step: number; data: any }) => void) => void;
+
     // 通用IPC方法
     on: (channel: string, func: (...args: any[]) => void) => void;
     sendMessage: (channel: string, data?: any) => void;

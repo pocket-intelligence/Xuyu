@@ -54,21 +54,21 @@ const SystemConfigPage: React.FC = () => {
                     <Form.Item
                         label="API地址"
                         name="llmApiUrl"
-                        rules={[{ required: true, message: '请输入API地址' }]}
+                        rules={[{ required: false, message: '请输入API地址' }]}
                     >
                         <Input placeholder="请输入语言模型API地址" />
                     </Form.Item>
                     <Form.Item
                         label="模型名称"
                         name="llmModelName"
-                        rules={[{ required: true, message: '请输入模型名称' }]}
+                        rules={[{ required: false, message: '请输入模型名称' }]}
                     >
                         <Input placeholder="请输入语言模型名称" />
                     </Form.Item>
                     <Form.Item
                         label="API密钥"
                         name="llmApiKey"
-                        rules={[{ required: true, message: '请输入API密钥' }]}
+                        rules={[{ required: false, message: '请输入API密钥' }]}
                     >
                         <Input.Password placeholder="请输入语言模型API密钥" />
                     </Form.Item>
@@ -81,21 +81,21 @@ const SystemConfigPage: React.FC = () => {
                     <Form.Item
                         label="API地址"
                         name="multimodalApiUrl"
-                        rules={[{ required: true, message: '请输入API地址' }]}
+                        rules={[{ required: false, message: '请输入API地址' }]}
                     >
                         <Input placeholder="请输入多模态模型API地址" />
                     </Form.Item>
                     <Form.Item
                         label="模型名称"
                         name="multimodalModelName"
-                        rules={[{ required: true, message: '请输入模型名称' }]}
+                        rules={[{ required: false, message: '请输入模型名称' }]}
                     >
                         <Input placeholder="请输入多模态模型名称" />
                     </Form.Item>
                     <Form.Item
                         label="API密钥"
                         name="multimodalApiKey"
-                        rules={[{ required: true, message: '请输入API密钥' }]}
+                        rules={[{ required: false, message: '请输入API密钥' }]}
                     >
                         <Input.Password placeholder="请输入多模态模型API密钥" />
                     </Form.Item>
@@ -108,7 +108,7 @@ const SystemConfigPage: React.FC = () => {
                     <Form.Item
                         label="实例地址"
                         name="searxngUrl"
-                        rules={[{ required: true, message: '请输入SearxNG实例地址' }]}
+                        rules={[{ required: false, message: '请输入SearxNG实例地址' }]}
                     >
                         <Input placeholder="请输入SearxNG实例地址" />
                     </Form.Item>

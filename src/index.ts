@@ -7,6 +7,7 @@ import { DeepResearchScraper } from './DeepResearchScraper';
 import * as fs from 'fs';
 import path from 'path';
 import { readConfig, saveConfig, SystemConfig } from './configManager';
+import { AgentService } from './services/AgentService';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -350,6 +351,37 @@ ipcMain.on("save-config", (event, params: { config: SystemConfig }) => {
     event.reply("save-config-result", {
       success: false,
       message: "保存配置失败: " + error.message
+    });
+  }
+});
+
+// 处理智能体研究请求
+ipcMain.on("agent-research", async (event, params: { topic: string }) => {
+  console.log("收到智能体研究请求，参数:", params);
+
+  try {
+    const result = await AgentService.conductResearch(
+      params.topic,
+      (step, data) => {
+        // 发送进度更新
+        event.reply("agent-research-progress", {
+          step,
+          data
+        });
+      }
+    );
+
+    // 发送最终结果
+    event.reply("agent-research-result", {
+      success: true,
+      message: "研究完成",
+      data: result
+    });
+  } catch (error: any) {
+    console.error("研究失败:", error);
+    event.reply("agent-research-result", {
+      success: false,
+      message: "研究失败: " + error.message
     });
   }
 });

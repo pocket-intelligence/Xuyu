@@ -2,6 +2,7 @@ import { chromium, BrowserContext } from "playwright";
 import * as fs from "fs";
 import * as path from "path";
 import axios from "axios";
+import { BrowserStateManager } from "./browserStateManager";
 
 export interface DeepResearchOptions {
     searxInstance?: string;      // SearXNG 实例地址
@@ -21,6 +22,7 @@ export interface DeepResearchResult {
 
 export class DeepResearchScraper {
     private browserContext: BrowserContext | null = null;
+    private browserStateManager: BrowserStateManager;
 
     constructor(private options: DeepResearchOptions) {
         this.options.searxInstance ||= "http://localhost:9527/"; // 可替换为你的 SearXNG 实例
@@ -31,6 +33,9 @@ export class DeepResearchScraper {
         if (!fs.existsSync(this.options.outputDir)) {
             fs.mkdirSync(this.options.outputDir, { recursive: true });
         }
+
+        // 初始化浏览器状态管理器
+        this.browserStateManager = new BrowserStateManager();
     }
 
     /** 调用 SearXNG API 获取搜索结果（axios版） */
@@ -105,13 +110,24 @@ export class DeepResearchScraper {
             return [];
         }
 
-        // Step 2: 启动浏览器
+        // Step 2: 启动浏览器并尝试恢复登录状态
+        const cookies = this.browserStateManager.readCookies();
         this.browserContext = await chromium.launchPersistentContext(
-            path.resolve(__dirname, "../deepresearch_profile"),
+            this.browserStateManager.getUserDataDir(),
             {
                 headless: this.options.headless,
             }
         );
+
+        // 如果有保存的cookie，尝试加载
+        if (cookies && this.browserStateManager.cookiesHaveValidExpiry(cookies)) {
+            try {
+                await this.browserContext.addCookies(cookies);
+                console.log("✅ 已加载保存的浏览器状态");
+            } catch (error) {
+                console.warn("加载保存的浏览器状态失败:", error);
+            }
+        }
 
         // Step 3: 逐个截图
         for (let i = 0; i < items.length; i++) {
@@ -139,22 +155,12 @@ export class DeepResearchScraper {
             console.log(`📄 已保存: ${record.title}`);
         }
 
+        // 保存浏览器状态
+        await this.browserStateManager.saveCookies(this.browserContext);
+        console.log("✅ 浏览器状态已保存");
+
         await this.browserContext.close();
         console.log("[DeepResearch] 全部完成 ✅");
         return results;
     }
 }
-
-// // ============ 使用示例 ============
-// // (Node 或 Electron 主进程中都可直接运行)
-// if (require.main === module) {
-//     const scraper = new DeepResearchScraper({
-//         query: "AI resume optimization",
-//         maxResults: 3,
-//         headless: false,
-//     });
-
-//     scraper.run().then((res) => {
-//         console.log("抓取完成:", res);
-//     });
-// }

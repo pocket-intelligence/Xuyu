@@ -6,6 +6,7 @@ import { ResearchResultService } from './services/ResearchResultService';
 import { DeepResearchScraper } from './DeepResearchScraper';
 import * as fs from 'fs';
 import path from 'path';
+import { readConfig, saveConfig, SystemConfig } from './configManager';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -307,6 +308,49 @@ ipcMain.on("retry-download", async () => {
     console.error("下载失败:", err.message);
     mainWindow?.webContents.send("download-failed", err.message);
     // 注意：不设置 isDownloading = false，允许用户重试
+  }
+});
+
+// 处理获取配置请求
+ipcMain.on("get-config", (event) => {
+  console.log("收到获取配置请求");
+  try {
+    const config = readConfig();
+    event.reply("get-config-result", {
+      success: true,
+      data: config
+    });
+  } catch (error: any) {
+    console.error("获取配置失败:", error);
+    event.reply("get-config-result", {
+      success: false,
+      message: "获取配置失败: " + error.message
+    });
+  }
+});
+
+// 处理保存配置请求
+ipcMain.on("save-config", (event, params: { config: SystemConfig }) => {
+  console.log("收到保存配置请求，参数:", params);
+  try {
+    const success = saveConfig(params.config);
+    if (success) {
+      event.reply("save-config-result", {
+        success: true,
+        message: "配置保存成功"
+      });
+    } else {
+      event.reply("save-config-result", {
+        success: false,
+        message: "配置保存失败"
+      });
+    }
+  } catch (error: any) {
+    console.error("保存配置失败:", error);
+    event.reply("save-config-result", {
+      success: false,
+      message: "保存配置失败: " + error.message
+    });
   }
 });
 

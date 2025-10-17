@@ -1,10 +1,41 @@
-import React from 'react';
-import { Card, Typography, Form, Input, Button, Space, Divider, Switch } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Card, Typography, Form, Input, Button, Space, message } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
 
 const SystemConfigPage: React.FC = () => {
+    const [form] = Form.useForm();
+    const [loading, setLoading] = useState(false);
+
+    // 页面加载时获取配置
+    useEffect(() => {
+        setLoading(true);
+        window.electronAPI.getConfig((result) => {
+            setLoading(false);
+            if (result.success) {
+                form.setFieldsValue(result.data);
+            } else {
+                message.error(result.message || '获取配置失败');
+            }
+        });
+    }, [form]);
+
+    // 保存配置
+    const handleSave = () => {
+        form.validateFields().then((values) => {
+            setLoading(true);
+            window.electronAPI.saveConfig({ config: values }, (result) => {
+                setLoading(false);
+                if (result.success) {
+                    message.success('配置保存成功');
+                } else {
+                    message.error(result.message || '配置保存失败');
+                }
+            });
+        });
+    };
+
     return (
         <div className="p-4">
             <Space className="w-full justify-between">
@@ -19,14 +50,26 @@ const SystemConfigPage: React.FC = () => {
 
             <Card className="mt-6">
                 <Title level={4}>大模型配置</Title>
-                <Form layout="vertical">
-                    <Form.Item label="API地址" name="apiUrl">
+                <Form form={form} layout="vertical">
+                    <Form.Item
+                        label="API地址"
+                        name="apiUrl"
+                        rules={[{ required: true, message: '请输入API地址' }]}
+                    >
                         <Input placeholder="请输入大模型API地址" />
                     </Form.Item>
-                    <Form.Item label="模型名称" name="modelName">
+                    <Form.Item
+                        label="模型名称"
+                        name="modelName"
+                        rules={[{ required: true, message: '请输入模型名称' }]}
+                    >
                         <Input placeholder="请输入模型名称" />
                     </Form.Item>
-                    <Form.Item label="API密钥" name="apiKey">
+                    <Form.Item
+                        label="API密钥"
+                        name="apiKey"
+                        rules={[{ required: true, message: '请输入API密钥' }]}
+                    >
                         <Input.Password placeholder="请输入API密钥" />
                     </Form.Item>
                 </Form>
@@ -34,20 +77,22 @@ const SystemConfigPage: React.FC = () => {
 
             <Card className="mt-6">
                 <Title level={4}>SearxNG配置</Title>
-                <Form layout="vertical">
-                    <Form.Item label="实例地址" name="searxngUrl">
+                <Form form={form} layout="vertical">
+                    <Form.Item
+                        label="实例地址"
+                        name="searxngUrl"
+                        rules={[{ required: true, message: '请输入SearxNG实例地址' }]}
+                    >
                         <Input placeholder="请输入SearxNG实例地址" />
-                    </Form.Item>
-                    <Form.Item label="启用代理" name="proxyEnabled" valuePropName="checked">
-                        <Switch />
                     </Form.Item>
                 </Form>
             </Card>
 
             <Card className="mt-6">
                 <Space>
-                    <Button type="primary">保存配置</Button>
-                    <Button>恢复默认</Button>
+                    <Button type="primary" onClick={handleSave} loading={loading}>
+                        保存配置
+                    </Button>
                 </Space>
             </Card>
         </div>

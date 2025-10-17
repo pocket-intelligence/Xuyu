@@ -34,6 +34,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
         ipcRenderer.once("get-research-results-result", (_, result) => callback(result));
     },
 
+    // 配置管理相关
+    getConfig: (callback: (result: { success: boolean; message?: string; data?: any }) => void) => {
+        ipcRenderer.send("get-config");
+        ipcRenderer.once("get-config-result", (_, result) => callback(result));
+    },
+    saveConfig: (params: { config: any }, callback: (result: { success: boolean; message?: string }) => void) => {
+        ipcRenderer.send("save-config", params);
+        ipcRenderer.once("save-config-result", (_, result) => callback(result));
+    },
+
     // 通用IPC方法
     on: (channel: string, func: (...args: any[]) => void) => {
         ipcRenderer.on(channel, (_, ...args) => func(...args));

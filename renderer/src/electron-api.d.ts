@@ -15,6 +15,10 @@ export interface IElectronAPI {
     getSearchResults: (params: { page?: number, limit?: number }, callback: (result: { success: boolean; message: string; data?: any }) => void) => void;
     getResearchResults: (params: { page?: number, limit?: number }, callback: (result: { success: boolean; message: string; data?: any }) => void) => void;
 
+    // 配置管理相关
+    getConfig: (callback: (result: { success: boolean; message?: string; data?: any }) => void) => void;
+    saveConfig: (params: { config: any }, callback: (result: { success: boolean; message?: string }) => void) => void;
+
     // 通用IPC方法
     on: (channel: string, func: (...args: any[]) => void) => void;
     sendMessage: (channel: string, data?: any) => void;

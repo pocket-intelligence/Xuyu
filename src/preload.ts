@@ -49,15 +49,25 @@ contextBridge.exposeInMainWorld("electronAPI", {
         ipcRenderer.send("agent-research", params);
         ipcRenderer.once("agent-research-result", (_, result) => callback(result));
     },
-    onAgentResearchProgress: (callback: (data: { step: number; data: any }) => void) => {
-        ipcRenderer.on("agent-research-progress", (_, data) => callback(data));
+    onAgentResearchProgress: (callback: (data: { step: number; data: any; stepInfo?: { title: string; description: string } }) => void) => {
+        console.log("注册 agent-research-progress 监听器");
+        ipcRenderer.on("agent-research-progress", (_, data) => {
+            console.log("收到 agent-research-progress 消息:", data);
+            callback(data);
+        });
     },
 
     // 通用IPC方法
     on: (channel: string, func: (...args: any[]) => void) => {
         ipcRenderer.on(channel, (_, ...args) => func(...args));
     },
+    removeListener: (channel: string, func: (...args: any[]) => void) => {
+        ipcRenderer.removeListener(channel, (_, ...args) => func(...args));
+    },
     sendMessage: (channel: string, data?: any) => {
         ipcRenderer.send(channel, data);
+    },
+    invoke: async (channel: string, data?: any) => {
+        return await ipcRenderer.invoke(channel, data);
     }
 });

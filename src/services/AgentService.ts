@@ -1,132 +1,61 @@
-import { readConfig } from '../configManager';
-import { app, ResearchState } from '../agent/agent';
-import { createOpenAIClient } from '../agent/llm';
+import {
+    createSession,
+    executeNextStep,
+    submitUserInput,
+    destroySession as destroySessionManager,
+    ProgressCallback
+} from "../agent/sessionManager";
 
-// 定义标准化的输出格式
-export interface ResearchOutput {
-    type: string;  // 动态类型，不写死枚举
-    content: any;
-    metadata?: Record<string, any>;
-}
-
-// 定义步骤信息接口
-interface StepInfo {
-    title: string;
-    description: string;
-}
-
+/**
+ * 智能体服务层 - 提供统一的接口给 Electron IPC 调用
+ */
 export class AgentService {
     /**
-     * 执行研究任务
-     * @param topic 研究主题
-     * @param onProgress 进度回调函数
+     * 创建研究会话
      */
-    static async conductResearch(
-        topic: string,
-        onProgress: (step: number, data: ResearchOutput, stepInfo?: StepInfo) => void
-    ): Promise<any> {
-        try {
-            // 读取配置
-            const config = readConfig();
+    static async createResearchSession(topic: string): Promise<string> {
+        console.log(`[AgentService] 创建研究会话，主题: ${topic}`);
+        return await createSession(topic);
+    }
 
-            // 检查语言模型配置
-            if (!config || !config.llmApiUrl || !config.llmApiKey) {
-                throw new Error('语言模型配置不完整，请先在系统配置中设置语言模型参数');
-            }
+    /**
+     * 执行下一步
+     */
+    static async executeNextStep(
+        sessionId: string,
+        progressCallback?: ProgressCallback
+    ): Promise<{
+        completed: boolean;
+        needsInput: boolean;
+        inputPrompt?: any;
+        state: any;
+    }> {
+        console.log(`[AgentService] 执行下一步，会话ID: ${sessionId}`);
+        return await executeNextStep(sessionId, progressCallback);
+    }
 
-            // 初始化状态 - 参考测试代码中的初始化方式
-            const initialState = {
-                topic: topic,
-                details: "",
-                query: "",
-                results: [] as string[],
-                report: "",
-                input_tokens: 0,
-                output_tokens: 0,
-                llm_client: createOpenAIClient(config.llmApiUrl, config.llmApiKey),
-                llm_model: config.llmModelName || "deepseek-v3.1"
-            };
+    /**
+     * 提交用户输入
+     */
+    static async submitUserInput(
+        sessionId: string,
+        input: any,
+        progressCallback?: ProgressCallback
+    ): Promise<{
+        completed: boolean;
+        needsInput: boolean;
+        inputPrompt?: any;
+        state: any;
+    }> {
+        console.log(`[AgentService] 提交用户输入，会话ID: ${sessionId}`, input);
+        return await submitUserInput(sessionId, input, progressCallback);
+    }
 
-            // 定义步骤映射
-            const stepMapping: Record<string, { index: number; info: StepInfo }> = {
-                "askDetails": {
-                    index: 0,
-                    info: {
-                        title: "询问细节",
-                        description: "了解研究需求"
-                    }
-                },
-                "buildQuery": {
-                    index: 1,
-                    info: {
-                        title: "构建查询",
-                        description: "生成搜索关键词"
-                    }
-                },
-                "search": {
-                    index: 2,
-                    info: {
-                        title: "执行搜索",
-                        description: "获取相关资料"
-                    }
-                },
-                "writeReport": {
-                    index: 3,
-                    info: {
-                        title: "生成报告",
-                        description: "撰写研究报告"
-                    }
-                }
-            };
-
-            // 执行研究任务
-            const result = await app.invoke(initialState);
-
-            // 发送每个步骤的结果
-            // 步骤1: 询问细节
-            if (result.details) {
-                const { index, info } = stepMapping["askDetails"];
-                onProgress(index, {
-                    type: "text",
-                    content: result.details
-                }, info);
-            }
-
-            // 步骤2: 构建查询
-            if (result.query) {
-                const { index, info } = stepMapping["buildQuery"];
-                onProgress(index, {
-                    type: "text",
-                    content: result.query
-                }, info);
-            }
-
-            // 步骤3: 搜索结果
-            if (result.results && result.results.length > 0) {
-                const { index, info } = stepMapping["search"];
-                onProgress(index, {
-                    type: "selection",
-                    content: result.results.map((r: string, i: number) => ({
-                        title: `搜索结果 ${i + 1}`,
-                        url: "#",
-                        content: r
-                    }))
-                }, info);
-            }
-
-            // 步骤4: 生成报告
-            if (result.report) {
-                const { index, info } = stepMapping["writeReport"];
-                onProgress(index, {
-                    type: "markdown",
-                    content: result.report
-                }, info);
-            }
-
-            return result;
-        } catch (error: any) {
-            console.error('研究过程中出现错误:', error);
-            throw new Error(`研究失败: ${error.message || '未知错误'}`);
-        }
+    /**
+     * 销毁会话
+     */
+    static async destroySession(sessionId: string): Promise<boolean> {
+        console.log(`[AgentService] 销毁会话，会话ID: ${sessionId}`);
+        return destroySessionManager(sessionId);
     }
 }

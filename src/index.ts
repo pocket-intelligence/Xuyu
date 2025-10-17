@@ -7,7 +7,7 @@ import { DeepResearchScraper } from './DeepResearchScraper';
 import * as fs from 'fs';
 import path from 'path';
 import { readConfig, saveConfig, SystemConfig } from './configManager';
-import { AgentService, ResearchOutput } from './services/AgentService';
+import { AgentService } from './services/AgentService';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -355,16 +355,38 @@ ipcMain.on("save-config", (event, params: { config: SystemConfig }) => {
   }
 });
 
-// 处理智能体研究请求
-ipcMain.on("agent-research", async (event, params: { topic: string }) => {
-  console.log("收到智能体研究请求，参数:", params);
+// 处理创建研究会话请求
+ipcMain.handle("create-research-session", async (event, params: { topic: string }) => {
+  console.log("[IPC] 收到创建研究会话请求，参数:", params);
 
   try {
-    const result = await AgentService.conductResearch(
-      params.topic,
-      (step: number, data: ResearchOutput, stepInfo?: { title: string; description: string }) => {
+    const sessionId = await AgentService.createResearchSession(params.topic);
+
+    console.log("[IPC] 会话创建成功，sessionId:", sessionId);
+    return {
+      success: true,
+      sessionId: sessionId
+    };
+  } catch (error: any) {
+    console.error("[IPC] 创建研究会话失败:", error);
+    return {
+      success: false,
+      message: "创建研究会话失败: " + error.message
+    };
+  }
+});
+
+// 处理执行下一步请求
+ipcMain.handle("execute-next-step", async (event, params: { sessionId: string }) => {
+  console.log("[IPC] 收到执行下一步请求，参数:", params);
+
+  try {
+    const result = await AgentService.executeNextStep(
+      params.sessionId,
+      (step: number, data: any, stepInfo?: { title: string; description: string }) => {
         // 发送进度更新
-        event.reply("agent-research-progress", {
+        console.log("[IPC] 发送进度更新:", { step, data, stepInfo });
+        mainWindow?.webContents.send("agent-research-progress", {
           step,
           data,
           stepInfo
@@ -372,38 +394,101 @@ ipcMain.on("agent-research", async (event, params: { topic: string }) => {
       }
     );
 
-    // 发送最终结果
-    event.reply("agent-research-result", {
+    // 过滤掉不可序列化的字段
+    const serializableState = { ...result.state };
+    delete serializableState.llm_client;
+
+    // 返回执行结果
+    console.log("[IPC] 返回执行结果:", {
       success: true,
-      message: "研究完成",
-      data: result
+      completed: result.completed,
+      needsInput: result.needsInput
+    });
+    return {
+      success: true,
+      completed: result.completed,
+      needsInput: result.needsInput,
+      inputPrompt: result.inputPrompt,
+      state: serializableState
+    };
+  } catch (error: any) {
+    console.error("[IPC] 执行下一步失败:", error);
+    return {
+      success: false,
+      message: "执行下一步失败: " + error.message
+    };
+  }
+});
+
+// 处理提交用户输入请求
+ipcMain.handle("submit-user-input", async (event, params: { sessionId: string, input: any }) => {
+  console.log("[IPC] 收到提交用户输入请求，参数:", params);
+
+  try {
+    const result = await AgentService.submitUserInput(
+      params.sessionId,
+      params.input,
+      (step: number, data: any, stepInfo?: { title: string; description: string }) => {
+        // 发送进度更新
+        console.log("[IPC] 发送进度更新:", { step, data, stepInfo });
+        mainWindow?.webContents.send("agent-research-progress", {
+          step,
+          data,
+          stepInfo
+        });
+      }
+    );
+
+    // 过滤掉不可序列化的字段
+    const serializableState = { ...result.state };
+    delete serializableState.llm_client;
+
+    // 返回执行结果
+    console.log("[IPC] 返回执行结果:", {
+      success: true,
+      completed: result.completed,
+      needsInput: result.needsInput
+    });
+    return {
+      success: true,
+      completed: result.completed,
+      needsInput: result.needsInput,
+      inputPrompt: result.inputPrompt,
+      state: serializableState
+    };
+  } catch (error: any) {
+    console.error("[IPC] 提交用户输入失败:", error);
+    return {
+      success: false,
+      message: "提交用户输入失败: " + error.message
+    };
+  }
+});
+
+// 处理销毁会话请求
+ipcMain.on("destroy-session", async (event, params: { sessionId: string }) => {
+  console.log("收到销毁会话请求，参数:", params);
+
+  try {
+    const result = await AgentService.destroySession(params.sessionId);
+
+    // 发送销毁结果
+    event.reply("destroy-session-result", {
+      success: true,
+      destroyed: result
     });
   } catch (error: any) {
-    console.error("研究失败:", error);
-    event.reply("agent-research-result", {
+    console.error("销毁会话失败:", error);
+    event.reply("destroy-session-result", {
       success: false,
-      message: "研究失败: " + error.message
+      message: "销毁会话失败: " + error.message
     });
   }
 });
 
 
-ipcMain.handle("ask-user", async (_event, question: string) => {
-  console.log("🧩 askUser question:", question);
 
-  // 通知前端显示弹窗
-  // 主进程等待渲染进程返回用户输入
-  return new Promise<string>((resolve) => {
-    // 发送事件给所有窗口
-    const win = require("electron").BrowserWindow.getAllWindows()[0];
-    win.webContents.send("show-ask-user", question);
 
-    // 等待渲染进程返回输入
-    ipcMain.once("ask-user-response", (_evt, answer: string) => {
-      resolve(answer);
-    });
-  });
-});
 
 app.whenReady().then(async () => {
   // 初始化数据库

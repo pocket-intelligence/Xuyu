@@ -88,7 +88,9 @@ export interface IElectronAPI {
 
     // 通用IPC方法
     on: (channel: string, func: (...args: unknown[]) => void) => void;
+    removeListener: (channel: string, func: (...args: unknown[]) => void) => void;
     sendMessage: (channel: string, data?: unknown) => void;
+    invoke: (channel: string, data?: unknown) => Promise<any>;
 }
 
 declare global {

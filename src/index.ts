@@ -7,7 +7,6 @@ import { DeepResearchScraper } from './DeepResearchScraper';
 import * as fs from 'fs';
 import path from 'path';
 
-
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
   app.quit();
@@ -16,6 +15,9 @@ if (require('electron-squirrel-startup')) {
 const isDev = !app.isPackaged;
 const BROWSER_PATH = localChromePath();
 let mainWindow: BrowserWindow | null = null;
+let isDownloading = false;
+let lastProgress = 0;
+let progressThrottleTimer: NodeJS.Timeout | null = null;
 
 function setMainWindow(window: any) {
   mainWindow = window;
@@ -58,13 +60,47 @@ const createWindow = (initialRoute: string): void => {
   // 监听页面加载完成事件
   mainWindow.webContents.on('dom-ready', () => {
     console.log('页面加载完成');
-    // 如果浏览器不存在，发送显示下载模态框的事件
-    if (!fs.existsSync(BROWSER_PATH)) {
-      console.log("浏览器不存在，发送显示下载模态框事件");
-      mainWindow?.webContents.send('show-download-modal');
-    }
+    // 检查浏览器是否存在
+    checkAndDownloadBrowser();
   });
 };
+
+// 检查并下载浏览器
+async function checkAndDownloadBrowser() {
+  // 如果已经在下载，则不重复触发
+  if (isDownloading) {
+    return;
+  }
+
+  console.log("检查浏览器是否存在:", BROWSER_PATH);
+  // 如果浏览器不存在，发送显示下载模态框的事件
+  if (!fs.existsSync(BROWSER_PATH)) {
+    console.log("浏览器不存在，发送显示下载模态框事件");
+    isDownloading = true;
+    lastProgress = 0;
+    mainWindow?.webContents.send('show-download-modal');
+
+    try {
+      await ensureBrowserInstalled((percent: number) => {
+        // 限制进度更新频率，避免过多更新
+        if (percent - lastProgress >= 1 || percent === 100) {
+          console.log(`下载进度: ${percent}%`);
+          mainWindow?.webContents.send("download-progress", percent);
+          lastProgress = percent;
+        }
+      });
+
+      // 下载完成后隐藏模态框
+      console.log("下载完成，发送隐藏模态框事件");
+      mainWindow?.webContents.send("hide-download-modal");
+      isDownloading = false;
+    } catch (err: any) {
+      console.error("下载失败:", err.message);
+      mainWindow?.webContents.send("download-failed", err.message);
+      // 注意：不设置 isDownloading = false，允许用户重试
+    }
+  }
+}
 
 // 处理开始研究请求
 ipcMain.on("start-research", async (event, params: { query: string; maxResults?: number }) => {
@@ -217,6 +253,39 @@ ipcMain.on("get-research-results", async (event, params: { page?: number, limit?
   }
 });
 
+// 处理重试下载请求
+ipcMain.on("retry-download", async () => {
+  console.log("收到重试下载请求");
+  if (isDownloading) {
+    console.log("已有下载任务正在进行中");
+    return;
+  }
+
+  isDownloading = true;
+  lastProgress = 0;
+  mainWindow?.webContents.send("download-progress", 0);
+
+  try {
+    await ensureBrowserInstalled((percent: number) => {
+      // 限制进度更新频率，避免过多更新
+      if (percent - lastProgress >= 1 || percent === 100) {
+        console.log(`下载进度: ${percent}%`);
+        mainWindow?.webContents.send("download-progress", percent);
+        lastProgress = percent;
+      }
+    });
+
+    // 下载完成后隐藏模态框
+    console.log("下载完成，发送隐藏模态框事件");
+    mainWindow?.webContents.send("hide-download-modal");
+    isDownloading = false;
+  } catch (err: any) {
+    console.error("下载失败:", err.message);
+    mainWindow?.webContents.send("download-failed", err.message);
+    // 注意：不设置 isDownloading = false，允许用户重试
+  }
+});
+
 app.whenReady().then(async () => {
   // 初始化数据库
   const dbInitialized = await initializeDatabase();
@@ -224,39 +293,8 @@ app.whenReady().then(async () => {
     console.error("数据库初始化失败");
   }
 
-  // 如果浏览器已存在，直接加载主页
-  if (fs.existsSync(BROWSER_PATH)) {
-    console.log("浏览器已存在，直接加载主页");
-    createWindow("/");
-  } else {
-    console.log("浏览器不存在，需要下载");
-    // 浏览器不存在 → 加载主页
-    createWindow("/");
-
-    try {
-      await ensureBrowserInstalled((percent: number) => {
-        console.log(`下载进度: ${percent}%`);
-        mainWindow?.webContents.send("download-progress", percent);
-      });
-
-      // 下载完成后隐藏模态框并刷新页面
-      console.log("下载完成，发送隐藏模态框事件");
-      mainWindow?.webContents.send("hide-download-modal");
-
-      // 重新加载页面以确保浏览器可用
-      if (mainWindow) {
-        if (isDev) {
-          mainWindow.loadURL(`http://localhost:5173/#/`);
-        } else {
-          const indexPath = path.join(process.resourcesPath, "renderer/index.html");
-          mainWindow.loadFile(indexPath, { hash: "/" });
-        }
-      }
-    } catch (err: any) {
-      console.error("下载失败:", err.message);
-      mainWindow?.webContents.send("download-failed", err.message);
-    }
-  }
+  // 直接创建窗口
+  createWindow("/");
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common

@@ -38,17 +38,12 @@ export async function downloadFile(
             responseType: 'stream', // 关键：以流的形式接收响应
             // Axios 默认会自动处理重定向 (maxRedirects > 0)
             maxRedirects: 5, // 确保重定向次数足够
-
-            onDownloadProgress: (progressEvent) => {
-                // Node.js 环境下，progressEvent.total 通常需要从 Content-Length 头部获取
-                // Axios 的 onDownloadProgress 在 Node.js 环境中可能需要手动计算，
-                // 但我们会用流的方式处理进度
-            }
         });
 
         // 获取文件总大小 (如果服务器提供了)
         const totalLength = response.headers['content-length'];
         let downloadedLength = 0;
+        let lastProgress = 0;
 
         // 创建写入流
         const writer = fs.createWriteStream(targetPath);
@@ -58,7 +53,11 @@ export async function downloadFile(
             downloadedLength += chunk.length;
             if (onProgress && totalLength) {
                 const percent = Math.round((downloadedLength / parseInt(totalLength, 10)) * 100);
-                onProgress(percent);
+                // 限制进度更新频率，避免过多更新
+                if (percent - lastProgress >= 1 || percent === 100) {
+                    onProgress(percent);
+                    lastProgress = percent;
+                }
             }
         });
 
@@ -93,26 +92,33 @@ export async function extractZip(zipPath: string, extractTo: string) {
 export async function ensureBrowserInstalled(
     onProgress?: (percent: number) => void
 ) {
-    // 使用 fs/promises 版本，如果您的 Node.js 版本支持
-    const baseDir = getBaseDir();
+    try {
+        // 使用 fs/promises 版本，如果您的 Node.js 版本支持
+        const baseDir = getBaseDir();
 
-    const targetFolder = path.join(baseDir, "chromium-win");
-    const zipPath = path.join(baseDir, "chromium.zip");
+        const targetFolder = path.join(baseDir, "chromium-win");
+        const zipPath = path.join(baseDir, "chromium.zip");
 
-    if (fs.existsSync(targetFolder)) {
-        console.log("✅ 浏览器已存在");
-        return;
+        if (fs.existsSync(targetFolder)) {
+            console.log("✅ 浏览器已存在");
+            if (onProgress) onProgress(100);
+            return;
+        }
+
+        console.log("🚀 开始下载浏览器包... to ", zipPath);
+
+        // 使用新的 Axios 下载函数
+        await downloadFile(CHROMIUM_URL, zipPath, onProgress);
+
+        console.log("📦 解压中...");
+        if (onProgress) onProgress(100); // 解压完成
+        await extractZip(zipPath, baseDir);
+
+        // 删除临时压缩包
+        fs.unlinkSync(zipPath);
+        console.log("✅ 浏览器下载完成");
+    } catch (error: any) {
+        console.error("浏览器下载失败:", error.message);
+        throw error;
     }
-
-    console.log("🚀 开始下载浏览器包... to ", zipPath);
-
-    // 使用新的 Axios 下载函数
-    await downloadFile(CHROMIUM_URL, zipPath, onProgress);
-
-    console.log("📦 解压中...");
-    await extractZip(zipPath, baseDir);
-
-    // 删除临时压缩包
-    fs.unlinkSync(zipPath);
-    console.log("✅ 浏览器下载完成");
 }

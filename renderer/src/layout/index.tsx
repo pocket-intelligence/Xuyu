@@ -1,12 +1,15 @@
 import { Layout, Menu, Typography } from 'antd';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { SearchOutlined, HistoryOutlined, SettingOutlined, BarChartOutlined } from '@ant-design/icons';
+import { useEffect, useState } from 'react';
+import BrowserDownloadModal from '../components/BrowserDownloadModal';
 
 const { Header, Sider, Content } = Layout;
 
 export default function AppLayout() {
     const navigate = useNavigate();
     const location = useLocation();
+    const [showDownloadModal, setShowDownloadModal] = useState(false);
 
     // 根据当前路径确定选中的菜单项
     const getSelectedKey = () => {
@@ -18,6 +21,13 @@ export default function AppLayout() {
 
         return 'deep-research'; // 默认选中项
     };
+
+    useEffect(() => {
+        // 监听显示下载模态框事件
+        window.electronAPI.on('show-download-modal', () => {
+            setShowDownloadModal(true);
+        });
+    }, []);
 
     return (
         <Layout className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
@@ -101,6 +111,12 @@ export default function AppLayout() {
                     </div>
                 </Content>
             </Layout>
+
+            {/* 浏览器下载模态框 */}
+            <BrowserDownloadModal
+                visible={showDownloadModal}
+                onClose={() => setShowDownloadModal(false)}
+            />
         </Layout>
     );
 }

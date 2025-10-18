@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Input, Button, Card, Typography, Spin, message, Space, Skeleton, List, Tag } from 'antd';
 import { SearchOutlined, RobotOutlined, SendOutlined, LoadingOutlined, CheckCircleOutlined, LinkOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
+import FormatSelectionOutput from '../../components/ResearchOutput/FormatSelectionOutput';
 
 const { Title, Paragraph, Text } = Typography;
 const { TextArea } = Input;
@@ -13,6 +14,13 @@ interface ProgressUpdate {
         title: string;
         description: string;
     };
+}
+
+interface InterruptData {
+    question?: string;
+    prompt?: string;
+    query?: string;
+    options?: string[];
 }
 
 
@@ -47,7 +55,7 @@ const DeepResearch: React.FC = () => {
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [currentStep, setCurrentStep] = useState<number>(0);
     const [stepDescription, setStepDescription] = useState<string>('等待开始...');
-    const [interruptData, setInterruptData] = useState<any>(null);
+    const [interruptData, setInterruptData] = useState<InterruptData | null>(null);
     const [userInput, setUserInput] = useState<string>('');
     const [report, setReport] = useState<string>('');
     const [completed, setCompleted] = useState<boolean>(false);
@@ -163,7 +171,7 @@ const DeepResearch: React.FC = () => {
         }
     };
 
-    // 提交用户输入
+    // 提交用户输入（文本输入）
     const handleSubmitInput = async () => {
         if (!sessionId) {
             message.warning('会话不存在');
@@ -189,9 +197,6 @@ const DeepResearch: React.FC = () => {
             if (currentInterruptData?.question) {
                 // userReviewDetails 节点：用户审查研究细节
                 input = { details: userInput || currentInterruptData.question };
-            } else if (currentInterruptData?.query) {
-                // userChooseFormat 节点：用户选择输出格式
-                input = { output_format: userInput || 'markdown' };
             }
 
             console.log('[前端] 提交的输入数据:', input);
@@ -231,6 +236,71 @@ const DeepResearch: React.FC = () => {
             }
 
             setUserInput('');
+        } catch (error: any) {
+            console.error('[前端] 恢复会话失败:', error);
+            message.error('恢复会话失败: ' + error.message);
+            setStepDescription('恢复会话失败');
+            setLoading(false);
+            isProcessingRef.current = false;
+        }
+    };
+
+    // 提交格式选择（按钮选择）
+    const handleSelectFormat = async (format: string) => {
+        if (!sessionId) {
+            message.warning('会话不存在');
+            return;
+        }
+
+        if (isProcessingRef.current) {
+            console.log('[前端] 已有任务在执行中，跳过');
+            return;
+        }
+
+        isProcessingRef.current = true;
+        setLoading(true);
+        setInterruptData(null);
+        setCurrentExecutingStep(null);
+
+        try {
+            console.log('[前端] 提交格式选择并恢复会话...', format);
+
+            const input = { output_format: format };
+            console.log('[前端] 提交的输入数据:', input);
+
+            const resumeResult = await window.electronAPI.invoke('submit-user-input', {
+                sessionId,
+                input
+            });
+
+            console.log('[前端] 恢复结果:', resumeResult);
+
+            if (!resumeResult.success) {
+                throw new Error(resumeResult.message || '恢复失败');
+            }
+
+            // 更新已完成任务
+            if (resumeResult.state?.finished_tasks) {
+                setFinishedTasks(resumeResult.state.finished_tasks);
+            }
+
+            // 检查是否需要用户输入
+            if (resumeResult.needsInput) {
+                console.log('[前端] 需要用户输入:', resumeResult.inputPrompt);
+                setInterruptData(resumeResult.inputPrompt);
+                setCurrentExecutingStep(null);
+                setLoading(false);
+                isProcessingRef.current = false;
+            } else if (resumeResult.completed) {
+                console.log('[前端] 研究完成');
+                setCompleted(true);
+                setReport(resumeResult.state.report || '没有生成报告');
+                setStepDescription('研究完成！');
+                setCurrentExecutingStep(null);
+                setLoading(false);
+                isProcessingRef.current = false;
+                message.success('研究完成！');
+            }
         } catch (error: any) {
             console.error('[前端] 恢复会话失败:', error);
             message.error('恢复会话失败: ' + error.message);
@@ -472,62 +542,74 @@ const DeepResearch: React.FC = () => {
                 )}
             </Card>
 
-            {/* 用户输入区域 - 始终显示在页面最下方 */}
+            {/* 用户输入区域 - 根据类型显示不同的组件 */}
             {interruptData && !completed && sessionId && (
-                <Card
-                    style={{
-                        marginTop: 24,
-                        borderColor: '#1890ff',
-                        borderWidth: 2,
-                        boxShadow: '0 4px 12px rgba(24, 144, 255, 0.15)'
-                    }}
-                >
-                    <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                        <div style={{
-                            padding: '12px 16px',
-                            backgroundColor: '#e6f7ff',
-                            borderRadius: '8px',
-                            borderLeft: '4px solid #1890ff'
-                        }}>
-                            <Text strong style={{ color: '#0050b3', fontSize: '15px' }}>
-                                ⏸️ 需要您的输入
-                            </Text>
-                            <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 4 }}>
-                                请在下方输入您的回复，或留空使用默认值
-                            </Paragraph>
-                        </div>
-
-                        <TextArea
-                            rows={4}
-                            placeholder={interruptData.question ? "请输入您的研究细节补充..." : "请输入输出格式（markdown/plain/json）或留空使用默认值..."}
-                            value={userInput}
-                            onChange={(e) => setUserInput(e.target.value)}
-                            disabled={loading}
-                            autoFocus
-                            style={{ fontSize: '14px' }}
-                            onKeyDown={(e) => {
-                                if (e.ctrlKey && e.key === 'Enter') {
-                                    handleSubmitInput();
-                                }
-                            }}
+                <>
+                    {/* 格式选择 - 显示按钮卡片 */}
+                    {interruptData.options && interruptData.options.length > 0 ? (
+                        <FormatSelectionOutput
+                            options={interruptData.options}
+                            onSelect={handleSelectFormat}
+                            loading={loading}
                         />
+                    ) : (
+                        /* 文本输入 - 显示输入框 */
+                        <Card
+                            style={{
+                                marginTop: 24,
+                                borderColor: '#1890ff',
+                                borderWidth: 2,
+                                boxShadow: '0 4px 12px rgba(24, 144, 255, 0.15)'
+                            }}
+                        >
+                            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                                <div style={{
+                                    padding: '12px 16px',
+                                    backgroundColor: '#e6f7ff',
+                                    borderRadius: '8px',
+                                    borderLeft: '4px solid #1890ff'
+                                }}>
+                                    <Text strong style={{ color: '#0050b3', fontSize: '15px' }}>
+                                        ⏸️ 需要您的输入
+                                    </Text>
+                                    <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 4 }}>
+                                        请在下方输入您的回复，或留空使用默认值
+                                    </Paragraph>
+                                </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Text type="secondary" style={{ fontSize: '13px' }}>
-                                💡 提示：按 Ctrl+Enter 快速提交
-                            </Text>
-                            <Button
-                                type="primary"
-                                size="large"
-                                onClick={handleSubmitInput}
-                                loading={loading}
-                                icon={<SendOutlined />}
-                            >
-                                提交并继续
-                            </Button>
-                        </div>
-                    </Space>
-                </Card>
+                                <TextArea
+                                    rows={4}
+                                    placeholder={interruptData.question ? "请输入您的研究细节补充..." : "请输入您的回复..."}
+                                    value={userInput}
+                                    onChange={(e) => setUserInput(e.target.value)}
+                                    disabled={loading}
+                                    autoFocus
+                                    style={{ fontSize: '14px' }}
+                                    onKeyDown={(e) => {
+                                        if (e.ctrlKey && e.key === 'Enter') {
+                                            handleSubmitInput();
+                                        }
+                                    }}
+                                />
+
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Text type="secondary" style={{ fontSize: '13px' }}>
+                                        💡 提示：按 Ctrl+Enter 快速提交
+                                    </Text>
+                                    <Button
+                                        type="primary"
+                                        size="large"
+                                        onClick={handleSubmitInput}
+                                        loading={loading}
+                                        icon={<SendOutlined />}
+                                    >
+                                        提交并继续
+                                    </Button>
+                                </div>
+                            </Space>
+                        </Card>
+                    )}
+                </>
             )}
         </div>
     );

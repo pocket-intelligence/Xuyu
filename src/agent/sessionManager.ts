@@ -51,7 +51,7 @@ export async function createSession(topic: string): Promise<string> {
         finished_tasks: [],
         llm_client: createOpenAIClient(config.llmApiUrl, config.llmApiKey),
         llm_model: config.llmModelName || "deepseek-v3.1",
-        output_format: "markdown",
+        output_format: "直接问答",
         report: null,
         input_tokens: 0,
         output_tokens: 0,
@@ -143,7 +143,8 @@ export async function executeNextStep(
             if (buildQueryResult) {
                 promptData = {
                     query: buildQueryResult.result,
-                    prompt: "请选择输出格式（``/plain/json，默认 ``）"
+                    prompt: "请选择输出格式",
+                    options: ["直接问答", "深度报告", "结构化输出"]
                 };
             }
         }
@@ -242,7 +243,7 @@ export async function submitUserInput(
         const askDetailsResult = session.state.finished_tasks.find(t => t.name === 'askDetails');
         result = input.details || askDetailsResult?.result || '';
     } else if (currentStep === 'userChooseFormat') {
-        result = input.output_format || '``';
+        result = input.output_format || '深度报告';
         session.state.output_format = result as any;
     }
 

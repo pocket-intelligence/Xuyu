@@ -28,9 +28,9 @@ export const ResearchState = Annotation.Root({
         reducer: (_, x) => x,
         default: () => null,
     }),
-    output_format: Annotation<"markdown" | "plain" | "json">({
+    output_format: Annotation<"直接问答" | "深度报告" | "结构化输出">({
         reducer: (_, x) => x,
-        default: () => "markdown",
+        default: () => "深度报告",
     }),
     input_tokens: Annotation<number>({
         reducer: (x, y) => x + (y ?? 0),
@@ -226,19 +226,20 @@ export async function userChooseFormat(state: typeof ResearchState.State) {
     // 使用 interrupt 暂停执行，等待用户选择格式
     const userInput = interrupt({
         query: keywords.join(", "),
-        prompt: "请选择输出格式（markdown/plain/json，默认 markdown）"
+        prompt: "请选择输出格式",
+        options: ["直接问答", "深度报告", "结构化输出"]
     });
 
     console.log("[userChooseFormat] 用户选择:", userInput);
 
     // 保存用户选择的格式
-    let format = "markdown";
+    let format = "深度报告";
     if (userInput && typeof userInput === 'object' && 'output_format' in userInput) {
         format = userInput.output_format;
     }
 
     return {
-        output_format: format as "markdown" | "plain" | "json",
+        output_format: format as "直接问答" | "深度报告" | "结构化输出",
         finished_tasks: [
             ...state.finished_tasks,
             { name: "userChooseFormat", result: format }
@@ -363,11 +364,11 @@ export async function writeReport(state: typeof ResearchState.State) {
     }
 
     const formatHint =
-        state.output_format === "markdown"
-            ? "请用 Markdown 格式输出"
-            : state.output_format === "json"
-                ? "请输出 JSON 格式，包括 title, summary, trends 三个字段"
-                : "请用纯文本格式输出";
+        state.output_format === "深度报告"
+            ? "请生成详细的研究报告，使用 Markdown 格式，包含引言、分析、趋势、总结等多个章节"
+            : state.output_format === "结构化输出"
+                ? "请输出 JSON 格式的结构化数据，包括 title（标题）、summary（摘要）、trends（趋势分析）、recommendations（建议）四个字段"
+                : "请用简洁明了的语言直接回答问题，不超过300字";
 
     const prompt = `请根据以下信息撰写一份简短研究报告。
 

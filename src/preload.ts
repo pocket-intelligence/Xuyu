@@ -11,29 +11,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onExtractProgress: (callback: (percent: number) => void) =>
         ipcRenderer.on("extract-progress", (_, percent) => callback(percent)),
 
-    // 研究相关
-    startResearch: (params: { query: string; maxResults?: number }, callback: (result: { success: boolean; message: string; data?: any }) => void) => {
-        ipcRenderer.send("start-research", params);
-        ipcRenderer.once("research-result", (_, result) => callback(result));
-    },
-    generateReport: (params: { search_id: number; full_text: string }, callback: (result: { success: boolean; message: string; data?: any }) => void) => {
-        ipcRenderer.send("generate-report", params);
-        ipcRenderer.once("generate-report-result", (_, result) => callback(result));
-    },
-    onResearchProgress: (callback: (message: string) => void) => {
-        ipcRenderer.on("research-progress", (_, message) => callback(message));
-    },
-
-    // 数据库相关
-    getSearchResults: (params: { page?: number, limit?: number }, callback: (result: { success: boolean; message: string; data?: any }) => void) => {
-        ipcRenderer.send("get-search-results", params);
-        ipcRenderer.once("get-search-results-result", (_, result) => callback(result));
-    },
-    getResearchResults: (params: { page?: number, limit?: number }, callback: (result: { success: boolean; message: string; data?: any }) => void) => {
-        ipcRenderer.send("get-research-results", params);
-        ipcRenderer.once("get-research-results-result", (_, result) => callback(result));
-    },
-
     // 配置管理相关
     getConfig: (callback: (result: { success: boolean; message?: string; data?: any }) => void) => {
         ipcRenderer.send("get-config");

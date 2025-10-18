@@ -5,18 +5,6 @@ export interface ResearchOutput {
     metadata?: Record<string, unknown>;
 }
 
-interface SearchResultData {
-    success: boolean;
-    message: string;
-    data?: unknown;
-}
-
-interface ResearchResultData {
-    success: boolean;
-    message?: string;
-    data?: unknown;
-}
-
 interface ConfigResultData {
     success: boolean;
     message?: string;
@@ -25,26 +13,6 @@ interface ConfigResultData {
 
 interface SaveConfigParams {
     config: unknown;
-}
-
-interface StartResearchParams {
-    query: string;
-    maxResults?: number;
-}
-
-interface GenerateReportParams {
-    search_id: number;
-    full_text: string;
-}
-
-interface GetSearchResultsParams {
-    page?: number;
-    limit?: number;
-}
-
-interface GetResearchResultsParams {
-    page?: number;
-    limit?: number;
 }
 
 interface StartAgentResearchParams {
@@ -68,15 +36,6 @@ export interface IElectronAPI {
     onDownloadFailed: (callback: (msg: string) => void) => void;
     onExtractStart: (callback: () => void) => void;
     onExtractProgress: (callback: (percent: number) => void) => void;
-
-    // 研究相关
-    startResearch: (params: StartResearchParams, callback: (result: SearchResultData) => void) => void;
-    generateReport: (params: GenerateReportParams, callback: (result: SearchResultData) => void) => void;
-    onResearchProgress: (callback: (message: string) => void) => void;
-
-    // 数据库相关
-    getSearchResults: (params: GetSearchResultsParams, callback: (result: SearchResultData) => void) => void;
-    getResearchResults: (params: GetResearchResultsParams, callback: (result: SearchResultData) => void) => void;
 
     // 配置管理相关
     getConfig: (callback: (result: ConfigResultData) => void) => void;

@@ -18,7 +18,6 @@ export default function AppLayout() {
         if (path === '/' || path.includes('/deep-research')) return 'deep-research';
         if (path.includes('/search-records')) return 'search-records';
         if (path.includes('/system-config')) return 'system-config';
-        if (path.includes('/model-records')) return 'model-records';
 
         return 'deep-research'; // 默认选中项
     };
@@ -79,16 +78,9 @@ export default function AppLayout() {
                             },
                             {
                                 key: 'search-records',
-                                label: <span className="font-medium">检索记录</span>,
+                                label: <span className="font-medium">智能体调用记录</span>,
                                 onClick: () => navigate('/search-records'),
                                 icon: <HistoryOutlined className="text-primary-600" />,
-                                className: 'mx-2 mb-1 rounded-lg hover:bg-primary-50 transition-all duration-200'
-                            },
-                            {
-                                key: 'model-records',
-                                label: <span className="font-medium">大模型调用记录</span>,
-                                onClick: () => navigate('/model-records'),
-                                icon: <BarChartOutlined className="text-primary-600" />,
                                 className: 'mx-2 mb-1 rounded-lg hover:bg-primary-50 transition-all duration-200'
                             },
                             {

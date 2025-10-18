@@ -4,6 +4,7 @@ import { START, END, StateGraph, Annotation, MemorySaver, interrupt } from "@lan
 import OpenAI from "openai";
 import { readConfig } from "../configManager";
 import { createOpenAIClient } from "./llm";
+import { AgentSessionService } from "../services/AgentSessionService";
 
 // ----------------------------
 // 1️⃣ 状态定义
@@ -52,6 +53,11 @@ export const ResearchState = Annotation.Root({
         reducer: (_, x) => x,
         default: () => "deepseek-v3.1",
     }),
+    // 新增: 会话 ID，用于数据持久化
+    session_id: Annotation<string>({
+        reducer: (_, x) => x,
+        default: () => "",
+    }),
 });
 
 // 辅助函数：获取已完成任务的结果
@@ -77,28 +83,66 @@ export async function askDetails(state: typeof ResearchState.State) {
         return {};
     }
 
-    console.log("[askDetails] 生成研究细节建议...");
-    const prompt = `你是一个研究助手。请就"${state.topic}"这个主题，向用户提出3-5个关键问题，以帮助你更好地进行研究。`;
+    const startTime = Date.now();
+    let stepLog: any = null;
 
-    const resp = await state.llm_client.chat.completions.create({
-        model: state.llm_model,
-        messages: [
-            { role: "system", content: "你是一个研究助手。" },
-            { role: "user", content: prompt },
-        ],
-    });
+    // 记录步骤开始
+    if (state.session_id) {
+        stepLog = await AgentSessionService.startStep(
+            state.session_id,
+            "askDetails",
+            { topic: state.topic },
+            state.llm_model
+        );
+    }
 
-    const result = resp.choices[0].message.content?.trim() || "";
-    console.log("[askDetails] 建议生成完成");
+    try {
+        console.log("[askDetails] 生成研究细节建议...");
+        const prompt = `你是一个研究助手。请就“${state.topic}”这个主题，向用户提出3-5个关键问题，以帮助你更好地进行研究。`;
 
-    return {
-        finished_tasks: [
-            ...state.finished_tasks,
-            { name: "askDetails", result: result }
-        ],
-        input_tokens: resp.usage?.prompt_tokens ?? 0,
-        output_tokens: resp.usage?.completion_tokens ?? 0,
-    };
+        const resp = await state.llm_client.chat.completions.create({
+            model: state.llm_model,
+            messages: [
+                { role: "system", content: "你是一个研究助手。" },
+                { role: "user", content: prompt },
+            ],
+        });
+
+        const result = resp.choices[0].message.content?.trim() || "";
+        const inputTokens = resp.usage?.prompt_tokens ?? 0;
+        const outputTokens = resp.usage?.completion_tokens ?? 0;
+        const duration = Date.now() - startTime;
+
+        console.log("[askDetails] 建议生成完成");
+
+        // 记录步骤完成
+        if (stepLog && state.session_id) {
+            await AgentSessionService.completeStep(
+                stepLog.id,
+                result,
+                inputTokens,
+                outputTokens,
+                duration,
+                `生成了 ${result.length} 个字符的研究细节建议`
+            );
+            await AgentSessionService.updateTokens(state.session_id, inputTokens, outputTokens);
+        }
+
+        return {
+            finished_tasks: [
+                ...state.finished_tasks,
+                { name: "askDetails", result: result }
+            ],
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+        };
+    } catch (error: any) {
+        // 记录步骤失败
+        if (stepLog && state.session_id) {
+            await AgentSessionService.failStep(stepLog.id, error.message, Date.now() - startTime);
+        }
+        throw error;
+    }
 }
 
 /** 步骤2：用户审查细节 */
@@ -146,10 +190,23 @@ export async function buildQuery(state: typeof ResearchState.State) {
 
     console.log("[buildQuery] 生成搜索关键词...");
 
+    const startTime = Date.now();
+    let stepLog: any = null;
+
     // 从已完成的任务中获取细节
     const details = getFinishedTaskResult(state, "userReviewDetails");
 
-    const prompt = `请根据研究主题“${state.topic}”和补充细节“${details}”，生成 3-5 个适合搜索引擎的关键词。
+    if (state.session_id) {
+        stepLog = await AgentSessionService.startStep(
+            state.session_id,
+            "buildQuery",
+            { topic: state.topic, details },
+            state.llm_model
+        );
+    }
+
+    try {
+        const prompt = `请根据研究主题"${state.topic}"和补充细节"${details}"，生成 3-5 个适合搜索引擎的关键词。
 
 **要求：**
 1. 每个关键词要简洁，可以是中文或英文
@@ -163,45 +220,67 @@ export async function buildQuery(state: typeof ResearchState.State) {
 返回：["artificial intelligence trends", "AI development 2024", "人工智能应用"]
 `;
 
-    const resp = await state.llm_client.chat.completions.create({
-        model: state.llm_model,
-        messages: [{ role: "user", content: prompt }],
-    });
+        const resp = await state.llm_client.chat.completions.create({
+            model: state.llm_model,
+            messages: [{ role: "user", content: prompt }],
+        });
 
-    let result = resp.choices[0].message.content?.trim() || "[]";
-    console.log("[buildQuery] 大模型返回:", result);
+        const inputTokens = resp.usage?.prompt_tokens ?? 0;
+        const outputTokens = resp.usage?.completion_tokens ?? 0;
 
-    // 尝试解析 JSON，如果失败则使用默认值
-    let keywords: string[] = [];
-    try {
-        // 移除可能的 markdown 代码块标记
-        result = result.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-        keywords = JSON.parse(result);
+        let result = resp.choices[0].message.content?.trim() || "[]";
+        console.log("[buildQuery] 大模型返回:", result);
 
-        if (!Array.isArray(keywords) || keywords.length === 0) {
-            throw new Error("解析结果不是数组或为空");
+        // 尝试解析 JSON，如果失败则使用默认值
+        let keywords: string[] = [];
+        try {
+            // 移除可能的 markdown 代码块标记
+            result = result.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+            keywords = JSON.parse(result);
+
+            if (!Array.isArray(keywords) || keywords.length === 0) {
+                throw new Error("解析结果不是数组或为空");
+            }
+
+            console.log("[buildQuery] 解析后的关键词:", keywords);
+        } catch (e) {
+            console.error("[buildQuery] 解析关键词失败:", e);
+            // 如果解析失败，使用主题作为默认关键词
+            keywords = [state.topic];
+            console.log("[buildQuery] 使用默认关键词:", keywords);
         }
 
-        console.log("[buildQuery] 解析后的关键词:", keywords);
-    } catch (e) {
-        console.error("[buildQuery] 解析关键词失败:", e);
-        // 如果解析失败，使用主题作为默认关键词
-        keywords = [state.topic];
-        console.log("[buildQuery] 使用默认关键词:", keywords);
+        // 保存为 JSON 字符串
+        const keywordsJson = JSON.stringify(keywords);
+        console.log("[buildQuery] 关键词生成完成:", keywordsJson);
+
+        // 记录步骤完成
+        if (stepLog && state.session_id) {
+            await AgentSessionService.completeStep(
+                stepLog.id,
+                keywordsJson,
+                inputTokens,
+                outputTokens,
+                Date.now() - startTime,
+                `生成了 ${keywords.length} 个搜索关键词`
+            );
+            await AgentSessionService.updateTokens(state.session_id, inputTokens, outputTokens);
+        }
+
+        return {
+            finished_tasks: [
+                ...state.finished_tasks,
+                { name: "buildQuery", result: keywordsJson }
+            ],
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+        };
+    } catch (error: any) {
+        if (stepLog && state.session_id) {
+            await AgentSessionService.failStep(stepLog.id, error.message, Date.now() - startTime);
+        }
+        throw error;
     }
-
-    // 保存为 JSON 字符串
-    const keywordsJson = JSON.stringify(keywords);
-    console.log("[buildQuery] 关键词生成完成:", keywordsJson);
-
-    return {
-        finished_tasks: [
-            ...state.finished_tasks,
-            { name: "buildQuery", result: keywordsJson }
-        ],
-        input_tokens: resp.usage?.prompt_tokens ?? 0,
-        output_tokens: resp.usage?.completion_tokens ?? 0,
-    };
 }
 
 /** 步骤4：用户选择格式 */
@@ -257,6 +336,9 @@ export async function searchSearxng(state: typeof ResearchState.State) {
 
     console.log("[searchSearxng] 执行搜索...");
 
+    const startTime = Date.now();
+    let stepLog: any = null;
+
     // 从已完成的任务中获取查询关键词
     const keywordsJson = getFinishedTaskResult(state, "buildQuery");
     if (!keywordsJson) {
@@ -283,58 +365,88 @@ export async function searchSearxng(state: typeof ResearchState.State) {
 
     console.log("[searchSearxng] 搜索关键词数组:", keywords);
 
-    // 循环搜索每个关键词
-    const allResults: any[] = [];
-    const searxUrl = "http://localhost:9527/search";
+    try {
+        // 循环搜索每个关键词
+        const allResults: any[] = [];
+        const searxUrl = "http://localhost:9527/search";
 
-    for (let i = 0; i < keywords.length; i++) {
-        const keyword = keywords[i];
-        console.log(`[searchSearxng] 搜索第 ${i + 1}/${keywords.length} 个关键词: ${keyword}`);
-
-        try {
-            const params = new URLSearchParams({ q: keyword, format: "json" });
-            const fullUrl = `${searxUrl}?${params.toString()}`;
-            console.log("[searchSearxng] 请求URL:", fullUrl);
-
-            const resp = await fetch(fullUrl);
-            const data = await resp.json();
-
-            console.log(`[searchSearxng] 第 ${i + 1} 个关键词返回结果数：`, data.results?.length || 0);
-
-            // 取每个关键词的前 3 条结果
-            const results = (data.results || []).slice(0, 3).map(
-                (r: any) => ({
-                    keyword: keyword,
-                    title: r.title || '无标题',
-                    url: r.url || '',
-                    content: r.content || r.snippet || ''
-                })
+        // 记录步骤开始（在搜索之前）
+        if (state.session_id) {
+            stepLog = await AgentSessionService.startStep(
+                state.session_id,
+                "searchSearxng",
+                { keywords },
+                state.llm_model
             );
-
-            allResults.push(...results);
-        } catch (error: any) {
-            console.error(`[searchSearxng] 搜索关键词 "${keyword}" 失败:`, error);
-            // 继续搜索下一个关键词
         }
+
+        for (let i = 0; i < keywords.length; i++) {
+            const keyword = keywords[i];
+            console.log(`[searchSearxng] 搜索第 ${i + 1}/${keywords.length} 个关键词: ${keyword}`);
+
+            try {
+                const params = new URLSearchParams({ q: keyword, format: "json" });
+                const fullUrl = `${searxUrl}?${params.toString()}`;
+                console.log("[searchSearxng] 请求URL:", fullUrl);
+
+                const resp = await fetch(fullUrl);
+                const data = await resp.json();
+
+                console.log(`[searchSearxng] 第 ${i + 1} 个关键词返回结果数：`, data.results?.length || 0);
+
+                // 取每个关键词的前 3 条结果
+                const results = (data.results || []).slice(0, 3).map(
+                    (r: any) => ({
+                        keyword: keyword,
+                        title: r.title || '无标题',
+                        url: r.url || '',
+                        content: r.content || r.snippet || ''
+                    })
+                );
+
+                allResults.push(...results);
+            } catch (error: any) {
+                console.error(`[searchSearxng] 搜索关键词 "${keyword}" 失败:`, error);
+                // 继续搜索下一个关键词
+            }
+        }
+
+        // 为所有结果添加索引
+        const indexedResults = allResults.map((r, i) => ({
+            index: i + 1,
+            ...r
+        }));
+
+        console.log("[searchSearxng] 搜索完成，总结果数:", indexedResults.length);
+        console.log("[searchSearxng] 处理后的结果:", indexedResults);
+
+        const resultJson = JSON.stringify(indexedResults, null, 2);
+
+        // 记录步骤完成（搜索步骤不消耗 token）
+        if (stepLog && state.session_id) {
+            // 将搜索结果保存到 outputResult 中，方便查看使用了哪些网页
+            await AgentSessionService.completeStep(
+                stepLog.id,
+                resultJson,  // 将搜索结果保存到 outputResult
+                0,
+                0,
+                Date.now() - startTime,
+                `搜索了 ${keywords.length} 个关键词，获得 ${indexedResults.length} 条结果`
+            );
+        }
+
+        return {
+            finished_tasks: [
+                ...state.finished_tasks,
+                { name: "search", result: resultJson }
+            ],
+        };
+    } catch (error: any) {
+        if (stepLog && state.session_id) {
+            await AgentSessionService.failStep(stepLog.id, error.message, Date.now() - startTime);
+        }
+        throw error;
     }
-
-    // 为所有结果添加索引
-    const indexedResults = allResults.map((r, i) => ({
-        index: i + 1,
-        ...r
-    }));
-
-    console.log("[searchSearxng] 搜索完成，总结果数:", indexedResults.length);
-    console.log("[searchSearxng] 处理后的结果:", indexedResults);
-
-    const resultJson = JSON.stringify(indexedResults, null, 2);
-
-    return {
-        finished_tasks: [
-            ...state.finished_tasks,
-            { name: "search", result: resultJson }
-        ],
-    };
 }
 
 /** 步骤6：生成报告 */
@@ -346,6 +458,9 @@ export async function writeReport(state: typeof ResearchState.State) {
     }
 
     console.log("[writeReport] 生成研究报告...");
+
+    const startTime = Date.now();
+    let stepLog: any = null;
 
     // 从已完成的任务中获取所有需要的数据
     const details = getFinishedTaskResult(state, "userReviewDetails");
@@ -363,14 +478,24 @@ export async function writeReport(state: typeof ResearchState.State) {
         searchResultsText = searchResultsJson;
     }
 
-    const formatHint =
-        state.output_format === "深度报告"
-            ? "请生成详细的研究报告，使用 Markdown 格式，包含引言、分析、趋势、总结等多个章节"
-            : state.output_format === "结构化输出"
-                ? "请输出 JSON 格式的结构化数据，包括 title（标题）、summary（摘要）、trends（趋势分析）、recommendations（建议）四个字段"
-                : "请用简洁明了的语言直接回答问题，不超过300字";
+    if (state.session_id) {
+        stepLog = await AgentSessionService.startStep(
+            state.session_id,
+            "writeReport",
+            { topic: state.topic, details, output_format: state.output_format },
+            state.llm_model
+        );
+    }
 
-    const prompt = `请根据以下信息撰写一份简短研究报告。
+    try {
+        const formatHint =
+            state.output_format === "深度报告"
+                ? "请生成详细的研究报告，使用 Markdown 格式，包含引言、分析、趋势、总结等多个章节"
+                : state.output_format === "结构化输出"
+                    ? "请输出 JSON 格式的结构化数据，包括 title（标题）、summary（摘要）、trends（趋势分析）、recommendations（建议）四个字段"
+                    : "请用简洁明了的语言直接回答问题，不超过300字";
+
+        const prompt = `请根据以下信息撰写一份简短研究报告。
 
 主题：${state.topic}
 细节：${details}
@@ -382,23 +507,45 @@ ${searchResultsText}
 - 概述研究现状、趋势和潜在方向
 - ${formatHint}`;
 
-    const resp = await state.llm_client.chat.completions.create({
-        model: state.llm_model,
-        messages: [{ role: "user", content: prompt }],
-    });
+        const resp = await state.llm_client.chat.completions.create({
+            model: state.llm_model,
+            messages: [{ role: "user", content: prompt }],
+        });
 
-    const report = resp.choices[0].message.content?.trim() || "";
-    console.log("[writeReport] 报告生成完成");
+        const inputTokens = resp.usage?.prompt_tokens ?? 0;
+        const outputTokens = resp.usage?.completion_tokens ?? 0;
 
-    return {
-        report: report,
-        finished_tasks: [
-            ...state.finished_tasks,
-            { name: "writeReport", result: report }
-        ],
-        input_tokens: resp.usage?.prompt_tokens ?? 0,
-        output_tokens: resp.usage?.completion_tokens ?? 0,
-    };
+        const report = resp.choices[0].message.content?.trim() || "";
+        console.log("[writeReport] 报告生成完成");
+
+        // 记录步骤完成
+        if (stepLog && state.session_id) {
+            await AgentSessionService.completeStep(
+                stepLog.id,
+                report,
+                inputTokens,
+                outputTokens,
+                Date.now() - startTime,
+                `生成了 ${report.length} 个字符的${state.output_format}报告`
+            );
+            await AgentSessionService.updateTokens(state.session_id, inputTokens, outputTokens);
+        }
+
+        return {
+            report: report,
+            finished_tasks: [
+                ...state.finished_tasks,
+                { name: "writeReport", result: report }
+            ],
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+        };
+    } catch (error: any) {
+        if (stepLog && state.session_id) {
+            await AgentSessionService.failStep(stepLog.id, error.message, Date.now() - startTime);
+        }
+        throw error;
+    }
 }
 
 // ----------------------------

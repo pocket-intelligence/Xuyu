@@ -1,6 +1,7 @@
 import { app, checkpointer, ResearchState } from "./agent";
 import { createOpenAIClient } from "./llm";
 import { readConfig } from "../configManager";
+import { AgentSessionService } from "../services/AgentSessionService";
 
 export type ProgressCallback = (
     step: number,
@@ -37,9 +38,13 @@ export async function createSession(topic: string): Promise<string> {
     // 读取配置
     const config = readConfig();
 
+    // 创建数据库会话记录
+    const session = await AgentSessionService.startSession(threadId, topic);
+
     // 创建初始状态
     const initialState: Partial<typeof ResearchState.State> = {
         topic,
+        session_id: threadId,
         task_list: [
             { name: "askDetails", description: "生成研究细节建议" },
             { name: "userReviewDetails", description: "用户审查研究细节" },
@@ -117,6 +122,15 @@ export async function executeNextStep(
     if (!foundStep) {
         // 所有步骤都完成
         console.log(`[SessionManager] 所有步骤完成`);
+
+        // 更新会话状态为完成
+        if (session.state.session_id) {
+            await AgentSessionService.completeSession(
+                session.state.session_id,
+                session.state.report || ""
+            );
+        }
+
         return {
             completed: true,
             needsInput: false,
@@ -245,6 +259,11 @@ export async function submitUserInput(
     } else if (currentStep === 'userChooseFormat') {
         result = input.output_format || '深度报告';
         session.state.output_format = result as any;
+
+        // 更新会话的输出格式
+        if (session.state.session_id) {
+            await AgentSessionService.updateOutputFormat(session.state.session_id, result);
+        }
     }
 
     // 保存结果
@@ -253,6 +272,18 @@ export async function submitUserInput(
         { name: currentStep, result }
     ];
     session.lastUpdated = Date.now();
+
+    // 更新已完成任务
+    if (session.state.session_id) {
+        const tasksForUpdate = session.state.finished_tasks.map(t => ({
+            name: t.name || '',
+            result: t.result || ''
+        }));
+        await AgentSessionService.updateFinishedTasks(
+            session.state.session_id,
+            tasksForUpdate
+        );
+    }
 
     console.log(`[SessionManager] 用户输入已保存: ${currentStep}`);
 

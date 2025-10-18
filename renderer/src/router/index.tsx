@@ -6,7 +6,6 @@ import AppLayout from "../layout";
 import DeepResearchPage from "../pages/DeepResearch/index";
 import SearchRecordsPage from "../pages/SearchRecords/index";
 import SystemConfigPage from "../pages/SystemConfig/index";
-import ModelRecordsPage from "../pages/ModelRecords/index";
 
 export const router = createHashRouter([
     {
@@ -16,7 +15,6 @@ export const router = createHashRouter([
             { path: '/', element: <DeepResearchPage /> },
             { path: '/search-records', element: <SearchRecordsPage /> },
             { path: '/system-config', element: <SystemConfigPage /> },
-            { path: '/model-records', element: <ModelRecordsPage /> },
         ],
     },
     { path: '*', element: <Error /> },

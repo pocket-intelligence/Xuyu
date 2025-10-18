@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import path from 'path';
 import { readConfig, saveConfig, SystemConfig } from './configManager';
 import { AgentService } from './services/AgentService';
+import { AgentSessionService } from './services/AgentSessionService';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -498,6 +499,65 @@ ipcMain.handle("open-external-url", async (event, params: { url: string }) => {
     return {
       success: false,
       message: "打开 URL 失败: " + error.message
+    };
+  }
+});
+
+// 处理获取会话列表请求
+ipcMain.handle("get-agent-sessions", async () => {
+  console.log("[IPC] 收到获取会话列表请求");
+
+  try {
+    const sessions = await AgentSessionService.getSessionList(50, 0);
+    console.log(`[IPC] 返回 ${sessions.length} 个会话`);
+    return {
+      success: true,
+      data: sessions
+    };
+  } catch (error: any) {
+    console.error("[IPC] 获取会话列表失败:", error);
+    return {
+      success: false,
+      message: "获取会话列表失败: " + error.message
+    };
+  }
+});
+
+// 处理获取会话详情请求
+ipcMain.handle("get-agent-session-detail", async (event, params: { sessionId: string }) => {
+  console.log("[IPC] 收到获取会话详情请求:", params);
+
+  try {
+    const detail = await AgentSessionService.getSessionDetail(params.sessionId);
+    console.log(`[IPC] 返回会话详情，包含 ${detail.steps.length} 个步骤`);
+    return {
+      success: true,
+      data: detail
+    };
+  } catch (error: any) {
+    console.error("[IPC] 获取会话详情失败:", error);
+    return {
+      success: false,
+      message: "获取会话详情失败: " + error.message
+    };
+  }
+});
+
+// 处理删除会话请求
+ipcMain.handle("delete-agent-session", async (event, params: { sessionId: string }) => {
+  console.log("[IPC] 收到删除会话请求:", params);
+
+  try {
+    await AgentSessionService.deleteSession(params.sessionId);
+    console.log(`[IPC] 会话 ${params.sessionId} 已删除`);
+    return {
+      success: true
+    };
+  } catch (error: any) {
+    console.error("[IPC] 删除会话失败:", error);
+    return {
+      success: false,
+      message: "删除会话失败: " + error.message
     };
   }
 });

@@ -5,6 +5,7 @@ import OpenAI from "openai";
 import { readConfig } from "../configManager";
 import { createOpenAIClient } from "./llm";
 import { AgentSessionService } from "../services/AgentSessionService";
+import { pageScraperService } from "../services/PageScraperService";
 
 // ----------------------------
 // 1️⃣ 状态定义
@@ -418,22 +419,22 @@ export async function searchSearxng(state: typeof ResearchState.State) {
         }));
 
         console.log("[searchSearxng] 搜索完成，总结果数:", indexedResults.length);
-        console.log("[searchSearxng] 处理后的结果:", indexedResults);
-
-        const resultJson = JSON.stringify(indexedResults, null, 2);
 
         // 记录步骤完成（搜索步骤不消耗 token）
         if (stepLog && state.session_id) {
-            // 将搜索结果保存到 outputResult 中，方便查看使用了哪些网页
+            const resultJson = JSON.stringify(indexedResults, null, 2);
             await AgentSessionService.completeStep(
                 stepLog.id,
-                resultJson,  // 将搜索结果保存到 outputResult
+                resultJson,
                 0,
                 0,
                 Date.now() - startTime,
                 `搜索了 ${keywords.length} 个关键词，获得 ${indexedResults.length} 条结果`
             );
         }
+
+        // 保存搜索结果到状态
+        const resultJson = JSON.stringify(indexedResults, null, 2);
 
         return {
             finished_tasks: [
@@ -442,6 +443,120 @@ export async function searchSearxng(state: typeof ResearchState.State) {
             ],
         };
     } catch (error: any) {
+        if (stepLog && state.session_id) {
+            await AgentSessionService.failStep(stepLog.id, error.message, Date.now() - startTime);
+        }
+        throw error;
+    }
+}
+
+/** 步骤5.5：抽取页面内容 */
+export async function extractPageContent(state: typeof ResearchState.State) {
+    // 检查是否已完成
+    if (isTaskFinished(state, "extractContent")) {
+        console.log("[extractPageContent] 任务已完成，跳过");
+        return {};
+    }
+
+    console.log("[extractPageContent] 开始抽取页面内容...");
+
+    const startTime = Date.now();
+    let stepLog: any = null;
+
+    // 从搜索结果中获取 URL
+    const searchResultsJson = getFinishedTaskResult(state, "search");
+    if (!searchResultsJson) {
+        console.error("[extractPageContent] 未找到搜索结果");
+        return {
+            finished_tasks: [
+                ...state.finished_tasks,
+                { name: "extractContent", result: JSON.stringify([]) }
+            ],
+        };
+    }
+
+    // 解析关键词（用于过滤）
+    const keywordsJson = getFinishedTaskResult(state, "buildQuery");
+    let keywords: string[] = [];
+    try {
+        keywords = JSON.parse(keywordsJson);
+    } catch (e) {
+        keywords = [state.topic];
+    }
+
+    // 解析搜索结果
+    let searchResults: any[] = [];
+    try {
+        searchResults = JSON.parse(searchResultsJson);
+    } catch (e) {
+        console.error("[extractPageContent] 解析搜索结果失败:", e);
+        return {
+            finished_tasks: [
+                ...state.finished_tasks,
+                { name: "extractContent", result: JSON.stringify([]) }
+            ],
+        };
+    }
+
+    // 提取前 5 个 URL
+    const urls = searchResults.slice(0, 5).map((r: any) => r.url).filter((url: string) => url);
+    console.log(`[extractPageContent] 将抽取 ${urls.length} 个页面的内容`);
+
+    if (state.session_id) {
+        stepLog = await AgentSessionService.startStep(
+            state.session_id,
+            "extractPageContent",
+            { urls, keywords },
+            state.llm_model
+        );
+    }
+
+    try {
+        // 初始化浏览器
+        await pageScraperService.initBrowser();
+
+        // 批量抽取页面内容
+        const scrapedContents = await pageScraperService.scrapePages(urls, keywords, 5);
+
+        console.log(`[extractPageContent] 成功抽取 ${scrapedContents.length} 个页面`);
+
+        // 关闭浏览器
+        await pageScraperService.closeBrowser();
+
+        // 格式化抽取结果
+        const extractedData = scrapedContents.map((content, index) => ({
+            index: index + 1,
+            url: content.url,
+            title: content.title,
+            wordCount: content.wordCount,
+            filteredContent: content.filteredContent.substring(0, 2000), // 限制长度
+            scrapedAt: content.scrapedAt
+        }));
+
+        const extractedJson = JSON.stringify(extractedData, null, 2);
+
+        // 记录步骤完成
+        if (stepLog && state.session_id) {
+            await AgentSessionService.completeStep(
+                stepLog.id,
+                extractedJson,
+                0,
+                0,
+                Date.now() - startTime,
+                `成功抽取了 ${scrapedContents.length} 个页面，总字数 ${scrapedContents.reduce((sum, c) => sum + c.wordCount, 0)} 字`
+            );
+        }
+
+        return {
+            finished_tasks: [
+                ...state.finished_tasks,
+                { name: "extractContent", result: extractedJson }
+            ],
+        };
+    } catch (error: any) {
+        // 确保关闭浏览器
+        await pageScraperService.closeBrowser();
+
         if (stepLog && state.session_id) {
             await AgentSessionService.failStep(stepLog.id, error.message, Date.now() - startTime);
         }
@@ -464,18 +579,30 @@ export async function writeReport(state: typeof ResearchState.State) {
 
     // 从已完成的任务中获取所有需要的数据
     const details = getFinishedTaskResult(state, "userReviewDetails");
-    const searchResultsJson = getFinishedTaskResult(state, "search");
+    const extractedContentJson = getFinishedTaskResult(state, "extractContent");
 
-    // 解析 JSON 并格式化为文本
-    let searchResultsText = "";
+    // 解析提取的页面内容，格式化为文本
+    let contentText = "";
     try {
-        const results = JSON.parse(searchResultsJson);
-        searchResultsText = results.map((r: any) =>
-            `#${r.index}: ${r.title}\n${r.url}\n${r.content}`
-        ).join("\n\n");
+        const extractedData = JSON.parse(extractedContentJson);
+        contentText = extractedData.map((item: any) =>
+            `# ${item.index}. ${item.title}
+来源: ${item.url}
+字数: ${item.wordCount}
+
+${item.filteredContent}`
+        ).join("\n\n---\n\n");
     } catch (e) {
-        // 如果解析失败，直接使用原文本
-        searchResultsText = searchResultsJson;
+        // 如果解析失败，尝试使用搜索结果
+        const searchResultsJson = getFinishedTaskResult(state, "search");
+        try {
+            const results = JSON.parse(searchResultsJson);
+            contentText = results.map((r: any) =>
+                `#${r.index}: ${r.title}\n${r.url}\n${r.content}`
+            ).join("\n\n");
+        } catch (e2) {
+            contentText = searchResultsJson || "无可用内容";
+        }
     }
 
     if (state.session_id) {
@@ -495,17 +622,19 @@ export async function writeReport(state: typeof ResearchState.State) {
                     ? "请输出 JSON 格式的结构化数据，包括 title（标题）、summary（摘要）、trends（趋势分析）、recommendations（建议）四个字段"
                     : "请用简洁明了的语言直接回答问题，不超过300字";
 
-        const prompt = `请根据以下信息撰写一份简短研究报告。
+        const prompt = `请根据以下信息撰写一份研究报告。
 
 主题：${state.topic}
 细节：${details}
-搜索结果：
-${searchResultsText}
+
+从网页中提取的内容：
+${contentText}
 
 要求：
 - 用简洁、逻辑清晰的中文撰写
-- 概述研究现状、趋势和潜在方向
-- ${formatHint}`;
+- 根据提供的网页内容进行分析，概述研究现状、趋势和潜在方向
+- ${formatHint}
+- 请在报告中标明信息来源（引用网页标题或URL）`;
 
         const resp = await state.llm_client.chat.completions.create({
             model: state.llm_model,
@@ -557,13 +686,15 @@ export const ResearchGraph = new StateGraph(ResearchState)
     .addNode("buildQuery", buildQuery)
     .addNode("userChooseFormat", userChooseFormat)
     .addNode("search", searchSearxng)
+    .addNode("extractContent", extractPageContent)
     .addNode("writeReport", writeReport)
     .addEdge(START, "askDetails")
     .addEdge("askDetails", "userReviewDetails")
     .addEdge("userReviewDetails", "buildQuery")
     .addEdge("buildQuery", "userChooseFormat")
     .addEdge("userChooseFormat", "search")
-    .addEdge("search", "writeReport")
+    .addEdge("search", "extractContent")
+    .addEdge("extractContent", "writeReport")
     .addEdge("writeReport", END);
 
 // 创建全局 checkpointer

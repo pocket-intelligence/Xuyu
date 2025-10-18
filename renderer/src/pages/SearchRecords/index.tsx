@@ -45,6 +45,9 @@ const STEP_NAMES: Record<string, string> = {
     buildQuery: '🔍 生成搜索关键词',
     userChooseFormat: '👤 选择输出格式',
     search: '🌐 执行搜索',
+    searchSearxng: '🌐 执行搜索',
+    extractPageContent: '📝 提取页面内容',
+    extractContent: '📝 提取页面内容',
     writeReport: '📝 生成报告'
 };
 

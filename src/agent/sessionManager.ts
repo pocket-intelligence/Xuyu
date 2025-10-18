@@ -25,6 +25,7 @@ const STEP_INFO: Record<string, { title: string; description: string }> = {
     buildQuery: { title: "构建查询", description: "正在生成搜索关键词..." },
     userChooseFormat: { title: "等待用户选择", description: "请选择输出格式..." },
     search: { title: "执行搜索", description: "正在搜索相关资料..." },
+    extractContent: { title: "提取页面内容", description: "正在使用 Playwright 抽取页面内容..." },
     writeReport: { title: "生成报告", description: "正在生成研究报告..." },
 };
 
@@ -51,6 +52,7 @@ export async function createSession(topic: string): Promise<string> {
             { name: "buildQuery", description: "构建搜索查询" },
             { name: "userChooseFormat", description: "用户选择输出格式" },
             { name: "search", description: "执行搜索" },
+            { name: "extractContent", description: "提取页面内容" },
             { name: "writeReport", description: "生成研究报告" },
         ],
         finished_tasks: [],
@@ -107,6 +109,7 @@ export async function executeNextStep(
         { name: 'buildQuery', needsInput: false },
         { name: 'userChooseFormat', needsInput: true },
         { name: 'search', needsInput: false },
+        { name: 'extractContent', needsInput: false },
         { name: 'writeReport', needsInput: false },
     ];
 
@@ -194,6 +197,9 @@ export async function executeNextStep(
         } else if (foundStep.name === 'search') {
             const { searchSearxng } = await import('./agent');
             result = await searchSearxng(session.state);
+        } else if (foundStep.name === 'extractContent') {
+            const { extractPageContent } = await import('./agent');
+            result = await extractPageContent(session.state);
         } else if (foundStep.name === 'writeReport') {
             const { writeReport } = await import('./agent');
             result = await writeReport(session.state);

@@ -34,6 +34,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
         });
     },
 
+    // 页面抓取进度监听
+    onScrapeProgress: (callback: (progress: any) => void) => {
+        ipcRenderer.on('scrape-progress', (_, progress) => callback(progress));
+    },
+    removeScrapeProgressListener: (callback: (progress: any) => void) => {
+        ipcRenderer.removeListener('scrape-progress', (_, progress) => callback(progress));
+    },
+
     // 通用IPC方法
     on: (channel: string, func: (...args: any[]) => void) => {
         ipcRenderer.on(channel, (_, ...args) => func(...args));

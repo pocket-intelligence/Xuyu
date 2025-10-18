@@ -5,7 +5,9 @@ import OpenAI from "openai";
 import { readConfig } from "../configManager";
 import { createOpenAIClient } from "./llm";
 import { AgentSessionService } from "../services/AgentSessionService";
-import { pageScraperService } from "../services/PageScraperService";
+import { pageScraperService, ScrapeProgressData } from "../services/PageScraperService";
+import { sendScrapeProgress } from "../index";
+import { searchSearxng as searchSearxngTool } from "./searTool";
 
 // ----------------------------
 // 1️⃣ 状态定义
@@ -369,7 +371,6 @@ export async function searchSearxng(state: typeof ResearchState.State) {
     try {
         // 循环搜索每个关键词
         const allResults: any[] = [];
-        const searxUrl = "http://localhost:9527/search";
 
         // 记录步骤开始（在搜索之前）
         if (state.session_id) {
@@ -385,29 +386,46 @@ export async function searchSearxng(state: typeof ResearchState.State) {
             const keyword = keywords[i];
             console.log(`[searchSearxng] 搜索第 ${i + 1}/${keywords.length} 个关键词: ${keyword}`);
 
+            // 发送搜索开始进度
+            sendScrapeProgress({
+                type: 'search_start',
+                current: i + 1,
+                total: keywords.length,
+                keyword: keyword
+            });
+
             try {
-                const params = new URLSearchParams({ q: keyword, format: "json" });
-                const fullUrl = `${searxUrl}?${params.toString()}`;
-                console.log("[searchSearxng] 请求URL:", fullUrl);
+                // 使用 searTool 中的 searchSearxng 方法
+                const results = await searchSearxngTool(keyword);
 
-                const resp = await fetch(fullUrl);
-                const data = await resp.json();
 
-                console.log(`[searchSearxng] 第 ${i + 1} 个关键词返回结果数：`, data.results?.length || 0);
 
-                // 取每个关键词的前 3 条结果
-                const results = (data.results || []).slice(0, 3).map(
-                    (r: any) => ({
-                        keyword: keyword,
-                        title: r.title || '无标题',
-                        url: r.url || '',
-                        content: r.content || r.snippet || ''
-                    })
-                );
+                console.log(`[searchSearxng] 第 ${i + 1} 个关键词返回结果数：`, results.length);
 
                 allResults.push(...results);
+
+                // 发送搜索完成进度
+                sendScrapeProgress({
+                    type: 'search_complete',
+                    current: i + 1,
+                    total: keywords.length,
+                    keyword: keyword,
+                    resultCount: results.length,
+                    results: results.map((r: any) => ({ title: r.title, url: r.url }))
+                });
+
+                await new Promise(resolve => setTimeout(resolve, 3000));
             } catch (error: any) {
                 console.error(`[searchSearxng] 搜索关键词 "${keyword}" 失败:`, error);
+
+                // 发送搜索失败进度
+                sendScrapeProgress({
+                    type: 'search_error',
+                    current: i + 1,
+                    total: keywords.length,
+                    keyword: keyword,
+                    error: error.message
+                });
                 // 继续搜索下一个关键词
             }
         }
@@ -475,15 +493,6 @@ export async function extractPageContent(state: typeof ResearchState.State) {
         };
     }
 
-    // 解析关键词（用于过滤）
-    const keywordsJson = getFinishedTaskResult(state, "buildQuery");
-    let keywords: string[] = [];
-    try {
-        keywords = JSON.parse(keywordsJson);
-    } catch (e) {
-        keywords = [state.topic];
-    }
-
     // 解析搜索结果
     let searchResults: any[] = [];
     try {
@@ -506,7 +515,7 @@ export async function extractPageContent(state: typeof ResearchState.State) {
         stepLog = await AgentSessionService.startStep(
             state.session_id,
             "extractPageContent",
-            { urls, keywords },
+            { urls },
             state.llm_model
         );
     }
@@ -515,8 +524,16 @@ export async function extractPageContent(state: typeof ResearchState.State) {
         // 初始化浏览器
         await pageScraperService.initBrowser();
 
-        // 批量抽取页面内容
-        const scrapedContents = await pageScraperService.scrapePages(urls, keywords, 5);
+        // 批量抽取页面内容（添加进度回调）
+        const scrapedContents = await pageScraperService.scrapePages(
+            urls,
+            5,
+            // 进度回调：将抓取进度发送到前端
+            (progress: ScrapeProgressData) => {
+                console.log('[extractPageContent] 抓取进度:', progress);
+                sendScrapeProgress(progress);
+            }
+        );
 
         console.log(`[extractPageContent] 成功抽取 ${scrapedContents.length} 个页面`);
 

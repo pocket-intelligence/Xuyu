@@ -46,6 +46,7 @@
     "@langchain/langgraph": "^0.4.9",
     "@types/uuid": "^10.0.0",
     "axios": "^1.12.2",
+    "axios-retry": "^4.5.0",
     "better-sqlite3": "^12.4.1",
     "electron-squirrel-startup": "^1.0.1",
     "openai": "^6.4.0",

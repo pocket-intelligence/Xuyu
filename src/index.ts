@@ -22,6 +22,15 @@ function setMainWindow(window: any) {
   mainWindow = window;
 }
 
+/**
+ * 发送页面抓取进度到渲染进程
+ */
+export function sendScrapeProgress(data: any) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('scrape-progress', data);
+  }
+}
+
 const createWindow = (initialRoute: string): void => {
   let iconPath;
   if (isDev) {

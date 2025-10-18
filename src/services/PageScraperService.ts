@@ -10,6 +10,18 @@ export interface ScrapedPageContent {
     scrapedAt: string;
 }
 
+export interface ScrapeProgressData {
+    type: 'start' | 'progress' | 'complete' | 'error';
+    current: number;
+    total: number;
+    url?: string;
+    title?: string;
+    wordCount?: number;
+    error?: string;
+}
+
+export type ScrapeProgressCallback = (progress: ScrapeProgressData) => void;
+
 export class PageScraperService {
     private browser: Browser | null = null;
 
@@ -43,7 +55,10 @@ export class PageScraperService {
     /**
      * 抓取单个页面的 p 标签内容
      */
-    async scrapePage(url: string, keywords: string[] = []): Promise<ScrapedPageContent> {
+    async scrapePage(
+        url: string,
+        onProgress?: ScrapeProgressCallback
+    ): Promise<ScrapedPageContent> {
         if (!this.browser) {
             await this.initBrowser();
         }
@@ -62,6 +77,17 @@ export class PageScraperService {
             // 获取页面标题
             const title = await page.title();
 
+            // 发送进度通知：开始抓取
+            if (onProgress) {
+                onProgress({
+                    type: 'start',
+                    current: 0,
+                    total: 1,
+                    url,
+                    title
+                });
+            }
+
             // 提取所有 p 标签的文本内容
             const paragraphs = await page.$$eval('p', (elements) =>
                 elements
@@ -71,28 +97,13 @@ export class PageScraperService {
 
             console.log(`[PageScraperService] 提取到 ${paragraphs.length} 个段落`);
 
-            // 如果提供了关键词，进行过滤
-            let filteredContent = '';
-            if (keywords.length > 0) {
-                // 将关键词转换为小写用于匹配
-                const lowerKeywords = keywords.map(k => k.toLowerCase());
-
-                // 过滤包含关键词的段落
-                const relevantParagraphs = paragraphs.filter(para => {
-                    const lowerPara = para.toLowerCase();
-                    return lowerKeywords.some(keyword => lowerPara.includes(keyword));
-                });
-
-                filteredContent = relevantParagraphs.join('\n\n');
-                console.log(`[PageScraperService] 过滤后剩余 ${relevantParagraphs.length} 个相关段落`);
-            } else {
-                // 如果没有关键词，直接拼接所有段落
-                filteredContent = paragraphs.join('\n\n');
-            }
+            // 直接拼接所有段落，不进行关键词过滤
+            const filteredContent = paragraphs.join('\n\n');
+            console.log(`[PageScraperService] 总字数: ${filteredContent.length}`);
 
             await page.close();
 
-            return {
+            const result: ScrapedPageContent = {
                 url,
                 title,
                 paragraphs,
@@ -100,9 +111,35 @@ export class PageScraperService {
                 wordCount: filteredContent.length,
                 scrapedAt: new Date().toISOString()
             };
+
+            // 发送进度通知：完成
+            if (onProgress) {
+                onProgress({
+                    type: 'complete',
+                    current: 1,
+                    total: 1,
+                    url,
+                    title,
+                    wordCount: result.wordCount
+                });
+            }
+
+            return result;
         } catch (error: any) {
             await page.close();
             console.error(`[PageScraperService] 抓取失败: ${url}`, error.message);
+
+            // 发送错误通知
+            if (onProgress) {
+                onProgress({
+                    type: 'error',
+                    current: 0,
+                    total: 1,
+                    url,
+                    error: error.message
+                });
+            }
+
             throw error;
         }
     }
@@ -112,15 +149,25 @@ export class PageScraperService {
      */
     async scrapePages(
         urls: string[],
-        keywords: string[] = [],
-        maxPages: number = 5
+        maxPages: number = 5,
+        onProgress?: ScrapeProgressCallback
     ): Promise<ScrapedPageContent[]> {
         const results: ScrapedPageContent[] = [];
         const limitedUrls = urls.slice(0, maxPages);
 
         for (let i = 0; i < limitedUrls.length; i++) {
             try {
-                const content = await this.scrapePage(limitedUrls[i], keywords);
+                const content = await this.scrapePage(
+                    limitedUrls[i],
+                    onProgress ? (progress) => {
+                        // 调整进度信息，反映总体进度
+                        onProgress({
+                            ...progress,
+                            current: i + (progress.type === 'complete' ? 1 : 0),
+                            total: limitedUrls.length
+                        });
+                    } : undefined
+                );
                 results.push(content);
             } catch (error: any) {
                 console.error(`[PageScraperService] 跳过失败的页面: ${limitedUrls[i]}`);

@@ -30,6 +30,20 @@ interface AgentResearchProgressData {
     data: ResearchOutput;
 }
 
+interface ScrapeProgressData {
+    type: 'start' | 'progress' | 'complete' | 'error' | 'search_start' | 'search_complete' | 'search_error';
+    current: number;
+    total: number;
+    url?: string;
+    title?: string;
+    wordCount?: number;
+    error?: string;
+    // 搜索相关字段
+    keyword?: string;
+    resultCount?: number;
+    results?: Array<{ title: string; url: string }>;
+}
+
 export interface IElectronAPI {
     // 浏览器下载相关
     onProgress: (callback: (percent: number) => void) => void;
@@ -44,6 +58,10 @@ export interface IElectronAPI {
     // 智能体研究相关
     startAgentResearch: (params: StartAgentResearchParams, callback: (result: AgentResearchResultData) => void) => void;
     onAgentResearchProgress: (callback: (data: AgentResearchProgressData) => void) => void;
+
+    // 页面抓取进度监听
+    onScrapeProgress: (callback: (progress: ScrapeProgressData) => void) => void;
+    removeScrapeProgressListener: (callback: (progress: ScrapeProgressData) => void) => void;
 
     // 通用IPC方法
     on: (channel: string, func: (...args: unknown[]) => void) => void;

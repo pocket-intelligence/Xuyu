@@ -16,6 +16,10 @@
 
 
 
+***note :*** 这个项目我只提供了大致的实现思路，和框架设计，其余代码大多是qoder生成的。
+
+
+
 ### 一些截图
 
 | ![image](./readme/1.png) | ![image](./readme/2.png) | ![image](./readme/3.png) |

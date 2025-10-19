@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Typography, Table, Space, Tag, Button, Modal, Descriptions, Timeline, Statistic, Row, Col, message, Tooltip } from 'antd';
-import { HistoryOutlined, EyeOutlined, DeleteOutlined, ClockCircleOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, SyncOutlined } from '@ant-design/icons';
+import { HistoryOutlined, EyeOutlined, DeleteOutlined, ClockCircleOutlined, ThunderboltOutlined, CheckCircleOutlined, CloseCircleOutlined, SyncOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 
 const { Title, Text, Paragraph } = Typography;
@@ -16,6 +16,7 @@ interface AgentSession {
     totalTokens: number;
     finishedTasks: string;
     finalReport: string | null;
+    pdfReportPath?: string | null;
     errorMessage: string | null;
     createdAt: string;
     updatedAt: string;
@@ -138,6 +139,18 @@ const SearchRecordsPage: React.FC = () => {
         setReportModalVisible(true);
     };
 
+    // 打开 PDF 位置
+    const handleOpenPdfLocation = async (pdfPath: string) => {
+        try {
+            const result = await window.electronAPI.invoke('open-pdf-location', { pdfPath });
+            if (!result.success) {
+                message.error('打开文件位置失败: ' + result.message);
+            }
+        } catch (error: any) {
+            message.error('打开文件位置失败: ' + error.message);
+        }
+    };
+
     // 获取状态标签
     const getStatusTag = (status: string) => {
         const statusConfig: Record<string, { color: string; icon: React.ReactNode; text: string }> = {
@@ -221,7 +234,7 @@ const SearchRecordsPage: React.FC = () => {
         {
             title: '操作',
             key: 'action',
-            width: 150,
+            width: 200,
             render: (_: any, record: AgentSession) => (
                 <Space>
                     <Button
@@ -231,14 +244,22 @@ const SearchRecordsPage: React.FC = () => {
                     >
                         查看
                     </Button>
-                    <Button
-                        type="link"
-                        danger
-                        icon={<DeleteOutlined />}
-                        onClick={() => handleDelete(record.sessionId)}
-                    >
-                        删除
-                    </Button>
+                    {record.pdfReportPath ? (
+                        <Button
+                            type="link"
+                            icon={<FolderOpenOutlined />}
+                            onClick={() => handleOpenPdfLocation(record.pdfReportPath!)}
+                        >
+                            打开报告
+                        </Button>
+                    ) : (
+                        <Button
+                            type="link"
+                            disabled
+                        >
+                            未生成报告
+                        </Button>
+                    )}
                 </Space>
             )
         }

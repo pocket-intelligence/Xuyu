@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Input, Button, Card, Typography, Spin, message, Space, Skeleton, List, Tag } from 'antd';
-import { SearchOutlined, RobotOutlined, SendOutlined, LoadingOutlined, CheckCircleOutlined, LinkOutlined } from '@ant-design/icons';
+import { SearchOutlined, RobotOutlined, SendOutlined, LoadingOutlined, CheckCircleOutlined, LinkOutlined, FilePdfOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import FormatSelectionOutput from '../../components/ResearchOutput/FormatSelectionOutput';
+import MarkdownWithChartsOutput from '../../components/ResearchOutput/MarkdownWithChartsOutput';
 
 const { Title, Paragraph, Text } = Typography;
 const { TextArea } = Input;
@@ -53,6 +55,36 @@ const markdownComponents = {
         inline
             ? <code style={{ backgroundColor: '#f5f5f5', padding: '2px 6px', borderRadius: '3px', fontSize: '14px', color: '#d63384' }} {...props} />
             : <code style={{ display: 'block', backgroundColor: '#f5f5f5', padding: '12px', borderRadius: '6px', fontSize: '14px', overflow: 'auto', marginBottom: '12px' }} {...props} />,
+    // 表格样式
+    table: ({ node, ...props }: any) => (
+        <table style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            marginBottom: '16px',
+            border: '1px solid #e8e8e8'
+        }} {...props} />
+    ),
+    thead: ({ node, ...props }: any) => (
+        <thead style={{ backgroundColor: '#fafafa' }} {...props} />
+    ),
+    th: ({ node, ...props }: any) => (
+        <th style={{
+            padding: '12px',
+            textAlign: 'left',
+            fontWeight: 600,
+            borderRight: '1px solid #e8e8e8',
+            borderBottom: '2px solid #e8e8e8'
+        }} {...props} />
+    ),
+    tr: ({ node, ...props }: any) => (
+        <tr style={{ borderBottom: '1px solid #e8e8e8' }} {...props} />
+    ),
+    td: ({ node, ...props }: any) => (
+        <td style={{
+            padding: '12px',
+            borderRight: '1px solid #e8e8e8'
+        }} {...props} />
+    ),
 };
 
 
@@ -333,6 +365,37 @@ const DeepResearch: React.FC = () => {
         isProcessingRef.current = false;
     };
 
+    // 导出 PDF 报告
+    const handleExportPdf = async () => {
+        if (!sessionId || !report) {
+            message.warning('没有可导出的报告');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            console.log('[前端] 导出 PDF 报告...');
+            const result = await window.electronAPI.invoke('export-pdf-report', {
+                sessionId,
+                topic
+            });
+
+            if (!result.success) {
+                throw new Error(result.message || '导出失败');
+            }
+
+            message.success('报告已导出，正在打开文件位置...');
+
+            // 打开文件所在目录
+            await window.electronAPI.invoke('open-pdf-location', { pdfPath: result.pdfPath });
+        } catch (error: any) {
+            console.error('[前端] 导出 PDF 失败:', error);
+            message.error('导出 PDF 失败: ' + error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="deep-research-container">
             <Card className="research-card">
@@ -390,20 +453,14 @@ const DeepResearch: React.FC = () => {
                                     // 如果是搜索结果，尝试解析 JSON
                                     let searchResults: any[] = [];
                                     if (isSearch) {
-                                        console.log('[前端] 搜索任务:', task);
-                                        console.log('[前端] 搜索结果原文:', task.result);
-
                                         // 检查结果是否为空
                                         if (!task.result || task.result.trim() === '') {
-                                            console.warn('[前端] 搜索结果为空');
                                             searchResults = [];
                                         } else {
                                             try {
                                                 searchResults = JSON.parse(task.result);
-                                                console.log('[前端] 解析后的搜索结果:', searchResults);
                                             } catch (e) {
                                                 console.error('[前端] 解析搜索结果失败:', e);
-                                                console.error('[前端] 失败的文本:', task.result);
                                                 searchResults = [];
                                             }
                                         }
@@ -432,46 +489,6 @@ const DeepResearch: React.FC = () => {
                                                         <List
                                                             dataSource={searchResults}
                                                             renderItem={(item: any) => (
-                                                                // <List.Item
-                                                                //     style={{
-                                                                //         borderBottom: '1px solid #f0f0f0',
-                                                                //         padding: '12px 0'
-                                                                //     }}
-                                                                //     extra={
-                                                                //         <Button
-                                                                //             type="link"
-                                                                //             icon={<LinkOutlined />}
-                                                                //             onClick={() => window.electronAPI.invoke('open-external-url', { url: item.url })}
-                                                                //         >
-                                                                //             打开链接
-                                                                //         </Button>
-                                                                //     }
-                                                                // >
-                                                                //     <List.Item.Meta
-                                                                //         title={
-                                                                //             <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                                                                //                 {item.keyword && (
-                                                                //                     <Tag color="blue" style={{ fontSize: '12px' }}>
-                                                                //                         {item.keyword}
-                                                                //                     </Tag>
-                                                                //                 )}
-                                                                //                 <Text strong style={{ fontSize: '15px' }}>
-                                                                //                     #{item.index} {item.title}
-                                                                //                 </Text>
-                                                                //             </Space>
-                                                                //         }
-                                                                //         description={
-                                                                //             <>
-                                                                //                 <Text type="secondary" style={{ fontSize: '13px', display: 'block', marginBottom: 8 }}>
-                                                                //                     {item.url}
-                                                                //                 </Text>
-                                                                //                 <Text style={{ fontSize: '14px', lineHeight: '1.6' }}>
-                                                                //                     {item.content}
-                                                                //                 </Text>
-                                                                //             </>
-                                                                //         }
-                                                                //     />
-                                                                // </List.Item>
                                                                 <Card style={{ marginBottom: 12, padding: 16 }}>
                                                                     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                                                                         {/* 标题 + Tag */}
@@ -507,18 +524,35 @@ const DeepResearch: React.FC = () => {
                                                     ) : (
                                                         <Text type="secondary">暂无搜索结果</Text>
                                                     )
+                                                ) : isReport ? (
+                                                    <MarkdownWithChartsOutput content={task.result || ''} />
                                                 ) : (
-                                                    <ReactMarkdown components={markdownComponents}>{task.result}</ReactMarkdown>
+                                                    <ReactMarkdown
+                                                        remarkPlugins={[remarkGfm]}
+                                                        components={markdownComponents}
+                                                    >
+                                                        {task.result}
+                                                    </ReactMarkdown>
                                                 )}
                                             </div>
                                             {isReport && completed && (
-                                                <Button
-                                                    onClick={handleReset}
-                                                    size="large"
-                                                    style={{ marginTop: 16 }}
-                                                >
-                                                    开始新研究
-                                                </Button>
+                                                <Space style={{ marginTop: 16 }}>
+                                                    <Button
+                                                        type="primary"
+                                                        icon={<FilePdfOutlined />}
+                                                        size="large"
+                                                        onClick={handleExportPdf}
+                                                        loading={loading}
+                                                    >
+                                                        导出 PDF 报告
+                                                    </Button>
+                                                    <Button
+                                                        onClick={handleReset}
+                                                        size="large"
+                                                    >
+                                                        开始新研究
+                                                    </Button>
+                                                </Space>
                                             )}
                                         </Card>
                                     );

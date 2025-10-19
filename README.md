@@ -13,3 +13,11 @@
 本项目前端用的electron（python样式不好调），没有后台，只是本地起了一个[searxng](https://github.com/searxng/searxng)的docker服务。
 
 网页内容抓取用的是playwright，然后需要大模型（最好有一个多模态大模型做图像识别相关的处理）。
+
+
+
+### 一些截图
+
+| ![image](./readme/1.png) | ![image](./readme/2.png) | ![image](./readme/3.png) |
+| ------------------------ | ------------------------ | ------------------------ |
+

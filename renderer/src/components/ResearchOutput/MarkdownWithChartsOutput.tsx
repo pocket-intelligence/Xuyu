@@ -14,25 +14,35 @@ interface MarkdownWithChartsOutputProps {
  * 2. 替换 {{CHART:chartId}} 占位符为实际图表
  */
 const MarkdownWithChartsOutput: React.FC<MarkdownWithChartsOutputProps> = ({ content }) => {
+    // 清理内容：移除可能存在的代码块包装
+    const cleanedInput = useMemo(() => {
+        let cleaned = content || '';
+        // 移除开头的 ```markdown 或 ``` 标记
+        cleaned = cleaned.replace(/^```markdown\s*\n?/i, '').replace(/^```\s*\n?/, '');
+        // 移除结尾的 ``` 标记
+        cleaned = cleaned.replace(/\n?```\s*$/, '');
+        return cleaned;
+    }, [content]);
+
     // 解析图表配置
     const { charts, cleanedContent } = useMemo(() => {
         let charts: any[] = [];
-        let cleaned = content;
+        let cleaned = cleanedInput;
 
         // 提取 ECharts 配置（从 HTML 注释中）
-        const match = content.match(/<!--\s*ECHARTS_CONFIG_START\s*([\s\S]*?)\s*ECHARTS_CONFIG_END\s*-->/);
+        const match = cleanedInput.match(/<!--\s*ECHARTS_CONFIG_START\s*([\s\S]*?)\s*ECHARTS_CONFIG_END\s*-->/);
         if (match) {
             try {
                 charts = JSON.parse(match[1]);
                 // 移除配置注释
-                cleaned = content.replace(match[0], '');
+                cleaned = cleanedInput.replace(match[0], '');
             } catch (e) {
                 console.error('[MarkdownWithCharts] 解析图表配置失败:', e);
             }
         }
 
         return { charts, cleanedContent: cleaned };
-    }, [content]);
+    }, [cleanedInput]);
 
     // 创建图表映射
     const chartMap = useMemo(() => {
@@ -133,16 +143,17 @@ const MarkdownWithChartsOutput: React.FC<MarkdownWithChartsOutputProps> = ({ con
     };
 
     return (
-        <div className="markdown-with-charts-output">
+        <div className="markdown-with-charts-output" style={{ lineHeight: '1.8', fontSize: '14px', color: '#262626' }}>
             {sections.map((section, index) => {
                 if (section.type === 'markdown') {
+                    const markdownContent = section.content as string;
                     return (
                         <ReactMarkdown
                             key={index}
                             remarkPlugins={[remarkGfm]}
                             components={markdownComponents}
                         >
-                            {section.content as string}
+                            {markdownContent}
                         </ReactMarkdown>
                     );
                 } else {

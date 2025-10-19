@@ -122,6 +122,14 @@ export class AgentSessionService {
     }
 
     /**
+     * 更新 PDF 报告路径
+     */
+    static async updatePdfPath(sessionId: string, pdfPath: string): Promise<void> {
+        console.log(`[AgentSessionService] 更新 PDF 路径: ${sessionId}, 路径: ${pdfPath}`);
+        await agentSessionRepository.update(sessionId, { pdfReportPath: pdfPath });
+    }
+
+    /**
      * 完成会话
      */
     static async completeSession(sessionId: string, finalReport?: string): Promise<void> {

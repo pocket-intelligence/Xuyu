@@ -36,6 +36,9 @@ export class AgentSession {
     @Column({ type: 'text', nullable: true, comment: '最终生成的报告' })
     finalReport!: string;
 
+    @Column({ type: 'varchar', length: 500, nullable: true, comment: 'PDF报告文件路径' })
+    pdfReportPath!: string;
+
     @Column({ type: 'text', nullable: true, comment: '错误信息' })
     errorMessage!: string;
 

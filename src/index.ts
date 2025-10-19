@@ -417,6 +417,62 @@ ipcMain.handle("delete-agent-session", async (event, params: { sessionId: string
   }
 });
 
+// 处理导出 PDF 报告请求
+ipcMain.handle("export-pdf-report", async (event, params: { sessionId: string, topic: string }) => {
+  console.log("[IPC] 收到导出 PDF 请求:", params);
+
+  try {
+    const { PdfExportService } = await import('./services/PdfExportService');
+
+    // 获取会话详情
+    const detail = await AgentSessionService.getSessionDetail(params.sessionId);
+    if (!detail.session || !detail.session.finalReport) {
+      throw new Error('没有找到报告内容');
+    }
+
+    // 生成 PDF
+    const pdfPath = await PdfExportService.exportToPdf(
+      params.sessionId,
+      detail.session.finalReport,
+      params.topic
+    );
+
+    // 保存 PDF 路径到数据库
+    await AgentSessionService.updatePdfPath(params.sessionId, pdfPath);
+
+    console.log(`[IPC] PDF 导出成功: ${pdfPath}`);
+    return {
+      success: true,
+      pdfPath
+    };
+  } catch (error: any) {
+    console.error("[IPC] 导出 PDF 失败:", error);
+    return {
+      success: false,
+      message: "导出 PDF 失败: " + error.message
+    };
+  }
+});
+
+// 处理打开 PDF 位置请求
+ipcMain.handle("open-pdf-location", async (event, params: { pdfPath: string }) => {
+  console.log("[IPC] 收到打开 PDF 位置请求:", params);
+
+  try {
+    const { PdfExportService } = await import('./services/PdfExportService');
+    await PdfExportService.openPdfDirectory(params.pdfPath);
+    return {
+      success: true
+    };
+  } catch (error: any) {
+    console.error("[IPC] 打开 PDF 位置失败:", error);
+    return {
+      success: false,
+      message: "打开 PDF 位置失败: " + error.message
+    };
+  }
+});
+
 
 
 

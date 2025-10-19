@@ -29,7 +29,14 @@ const STEP_TITLES: Record<string, { title: string; icon: string; color: string }
     askDetails: { title: '研究要点分析', icon: '💡', color: '#1890ff' },
     buildQuery: { title: '搜索关键词生成', icon: '🔍', color: '#52c41a' },
     search: { title: '搜索结果', icon: '🌐', color: '#13c2c2' },
-    writeReport: { title: '研究报告', icon: '📝', color: '#722ed1' },
+    extractContent: { title: '页面内容抽取', icon: '📄', color: '#fa8c16' },
+    // 深度报告流程
+    coarseRead: { title: '粗读与主题抽取', icon: '👓', color: '#eb2f96' },
+    craftOutline: { title: '生成报告大纲', icon: '📋', color: '#722ed1' },
+    fillOutline: { title: '逐章填充内容', icon: '✍️', color: '#fa541c' },
+    generateCharts: { title: '生成数据图表', icon: '📈', color: '#13c2c2' },
+    // 最终报告生成（所有流程共用）
+    writeReport: { title: '生成研究报告', icon: '📝', color: '#52c41a' },
 };
 
 // Markdown 自定义组件样式

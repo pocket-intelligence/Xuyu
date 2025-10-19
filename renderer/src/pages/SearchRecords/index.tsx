@@ -48,6 +48,12 @@ const STEP_NAMES: Record<string, string> = {
     searchSearxng: '🌐 执行搜索',
     extractPageContent: '📝 提取页面内容',
     extractContent: '📝 提取页面内容',
+    // 深度报告流程
+    coarseRead: '👓 粗读与主题抽取',
+    craftOutline: '📋 生成报告大纲',
+    fillOutline: '✍️ 逐章填充内容',
+    generateCharts: '📈 生成数据图表',
+    // 最终报告生成（所有流程共用）
     writeReport: '📝 生成报告'
 };
 

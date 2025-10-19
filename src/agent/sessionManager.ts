@@ -26,6 +26,10 @@ const STEP_INFO: Record<string, { title: string; description: string }> = {
     userChooseFormat: { title: "等待用户选择", description: "请选择输出格式..." },
     search: { title: "执行搜索", description: "正在搜索相关资料..." },
     extractContent: { title: "提取页面内容", description: "正在使用 Playwright 抽取页面内容..." },
+    coarseRead: { title: "粗读材料", description: "正在粗读搜索材料并提取关键信息..." },
+    craftOutline: { title: "生成报告大纲", description: "正在生成报告大纲..." },
+    fillOutline: { title: "填充报告内容", description: "正在逐章填充报告内容..." },
+    generateCharts: { title: "生成数据图表", description: "正在使用 AI 生成数据可视化图表..." },
     writeReport: { title: "生成报告", description: "正在生成研究报告..." },
 };
 
@@ -102,7 +106,8 @@ export async function executeNextStep(
     const state = session.state;
     const finishedTaskNames = state.finished_tasks.map(t => t.name);
 
-    // 定义执行顺序
+    // 定义执行顺序（根据输出格式动态调整）
+    const isDeepReport = state.output_format === "深度报告";
     const steps = [
         { name: 'askDetails', needsInput: false },
         { name: 'userReviewDetails', needsInput: true },
@@ -110,6 +115,13 @@ export async function executeNextStep(
         { name: 'userChooseFormat', needsInput: true },
         { name: 'search', needsInput: false },
         { name: 'extractContent', needsInput: false },
+        // 深度报告专用节点
+        ...(isDeepReport ? [
+            { name: 'coarseRead', needsInput: false },
+            { name: 'craftOutline', needsInput: false },
+            { name: 'fillOutline', needsInput: false },
+            { name: 'generateCharts', needsInput: false },
+        ] : []),
         { name: 'writeReport', needsInput: false },
     ];
 
@@ -200,6 +212,18 @@ export async function executeNextStep(
         } else if (foundStep.name === 'extractContent') {
             const { extractPageContent } = await import('./agent');
             result = await extractPageContent(session.state);
+        } else if (foundStep.name === 'coarseRead') {
+            const { coarseRead } = await import('./node_other');
+            result = await coarseRead(session.state);
+        } else if (foundStep.name === 'craftOutline') {
+            const { craftOutline } = await import('./node_other');
+            result = await craftOutline(session.state);
+        } else if (foundStep.name === 'fillOutline') {
+            const { fillOutline } = await import('./node_other');
+            result = await fillOutline(session.state);
+        } else if (foundStep.name === 'generateCharts') {
+            const { generateCharts } = await import('./node_other');
+            result = await generateCharts(session.state);
         } else if (foundStep.name === 'writeReport') {
             const { writeReport } = await import('./agent');
             result = await writeReport(session.state);
@@ -213,6 +237,19 @@ export async function executeNextStep(
         return await executeNextStep(sessionId, progressCallback);
     } catch (error: any) {
         console.error(`[SessionManager] 执行 ${foundStep.name} 失败:`, error);
+
+        // 更新会话状态为失败
+        if (session.state.session_id) {
+            await AgentSessionService.failSession(
+                session.state.session_id,
+                error.message || '执行失败'
+            );
+        }
+
+        // 销毁会话
+        sessions.delete(sessionId);
+
+        // 重新抛出错误，让前端能捕获
         throw error;
     }
 }
@@ -266,6 +303,27 @@ export async function submitUserInput(
         result = input.output_format || '深度报告';
         session.state.output_format = result as any;
 
+        // 如果选择深度报告，动态添加额外的任务
+        if (result === '深度报告') {
+            const deepReportTasks = [
+                { name: "coarseRead", description: "粗读材料" },
+                { name: "craftOutline", description: "生成报告大纲" },
+                { name: "fillOutline", description: "填充报告内容" },
+                { name: "generateCharts", description: "生成数据图表" },
+            ];
+
+            // 在 writeReport 之前插入这些任务
+            const writeReportIndex = session.state.task_list.findIndex(t => t.name === 'writeReport');
+            if (writeReportIndex !== -1) {
+                session.state.task_list = [
+                    ...session.state.task_list.slice(0, writeReportIndex),
+                    ...deepReportTasks,
+                    ...session.state.task_list.slice(writeReportIndex)
+                ];
+                console.log('[SessionManager] 已添加深度报告任务');
+            }
+        }
+
         // 更新会话的输出格式
         if (session.state.session_id) {
             await AgentSessionService.updateOutputFormat(session.state.session_id, result);
@@ -294,7 +352,25 @@ export async function submitUserInput(
     console.log(`[SessionManager] 用户输入已保存: ${currentStep}`);
 
     // 继续执行下一步
-    return await executeNextStep(sessionId, progressCallback);
+    try {
+        return await executeNextStep(sessionId, progressCallback);
+    } catch (error: any) {
+        console.error(`[SessionManager] 继续执行失败:`, error);
+
+        // 更新会话状态为失败
+        if (session.state.session_id) {
+            await AgentSessionService.failSession(
+                session.state.session_id,
+                error.message || '执行失败'
+            );
+        }
+
+        // 销毁会话
+        sessions.delete(sessionId);
+
+        // 重新抛出错误
+        throw error;
+    }
 }
 
 /**

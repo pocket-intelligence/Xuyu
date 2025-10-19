@@ -8,6 +8,7 @@ import { AgentSessionService } from "../services/AgentSessionService";
 import { pageScraperService, ScrapeProgressData } from "../services/PageScraperService";
 import { sendScrapeProgress } from "../index";
 import { searchSearxng as searchSearxngTool } from "./searTool";
+import { coarseRead, craftOutline, fillOutline, generateCharts } from "./node_other";
 
 // ----------------------------
 // 1️⃣ 状态定义
@@ -237,8 +238,8 @@ export async function buildQuery(state: typeof ResearchState.State) {
         // 尝试解析 JSON，如果失败则使用默认值
         let keywords: string[] = [];
         try {
-            // 移除可能的 markdown 代码块标记
-            result = result.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+            // 移除可能的代码块标记
+            result = result.replace(/``json\s*/g, '').replace(/```\s*/g, '').trim();
             keywords = JSON.parse(result);
 
             if (!Array.isArray(keywords) || keywords.length === 0) {
@@ -581,7 +582,7 @@ export async function extractPageContent(state: typeof ResearchState.State) {
     }
 }
 
-/** 步骤6：生成报告 */
+/** 步骤6：生成报告（智能识别是否有前置深度分析） */
 export async function writeReport(state: typeof ResearchState.State) {
     // 检查是否已完成
     if (isTaskFinished(state, "writeReport")) {
@@ -597,6 +598,14 @@ export async function writeReport(state: typeof ResearchState.State) {
     // 从已完成的任务中获取所有需要的数据
     const details = getFinishedTaskResult(state, "userReviewDetails");
     const extractedContentJson = getFinishedTaskResult(state, "extractContent");
+
+    // 检查是否经过深度报告流程（有填充内容）
+    const filledOutlineJson = getFinishedTaskResult(state, "fillOutline");
+    const outlineJson = getFinishedTaskResult(state, "craftOutline");
+    const coarseReadJson = getFinishedTaskResult(state, "coarseRead");
+    const chartsJson = getFinishedTaskResult(state, "generateCharts");
+
+    const hasDeepAnalysis = !!(filledOutlineJson && outlineJson);
 
     // 解析提取的页面内容，格式化为文本
     let contentText = "";
@@ -626,20 +635,73 @@ ${item.filteredContent}`
         stepLog = await AgentSessionService.startStep(
             state.session_id,
             "writeReport",
-            { topic: state.topic, details, output_format: state.output_format },
+            { topic: state.topic, details, output_format: state.output_format, hasDeepAnalysis },
             state.llm_model
         );
     }
 
     try {
-        const formatHint =
-            state.output_format === "深度报告"
-                ? "请生成详细的研究报告，使用 Markdown 格式，包含引言、分析、趋势、总结等多个章节"
-                : state.output_format === "结构化输出"
-                    ? "请输出 JSON 格式的结构化数据，包括 title（标题）、summary（摘要）、trends（趋势分析）、recommendations（建议）四个字段"
-                    : "请用简洁明了的语言直接回答问题，不超过300字";
+        let prompt = "";
 
-        const prompt = `请根据以下信息撰写一份研究报告。
+        // 如果经过深度分析流程，使用增强版 prompt
+        if (hasDeepAnalysis) {
+            console.log("[writeReport] 检测到深度分析结果，使用增强版报告生成");
+
+            const filledSections = JSON.parse(filledOutlineJson);
+            const outline = JSON.parse(outlineJson);
+            const coarseRead = coarseReadJson ? JSON.parse(coarseReadJson) : null;
+
+            // 将各章按序合并为 Markdown
+            const body = Array.isArray(filledSections)
+                ? filledSections.map((s: any, idx: number) =>
+                    `## ${idx + 1}. ${s.heading}\n\n${s.content}`
+                ).join("\n\n")
+                : "";
+
+            // 提取主要引用来源
+            const evidenceRefs = coarseRead?.evidence_refs || [];
+            const referencesText = evidenceRefs.slice(0, 10).map((ref: any, idx: number) =>
+                `${idx + 1}. [${ref.title || '未知标题'}](${ref.url || '#'})`
+            ).join("\n");
+
+            // 准备图表信息
+            const charts = chartsJson ? JSON.parse(chartsJson) : [];
+            const chartsInfo = Array.isArray(charts) && charts.length > 0
+                ? "\n\n可用图表（" + charts.length + "个）：\n" + charts.map((c: any, idx: number) => `${idx + 1}. ${c.title}: ${c.description || ''}`).join('\n')
+                : '';
+
+            prompt = `请将下面的章节内容合并为一篇连贯、逻辑清晰的研究报告（Markdown 格式）。
+
+主题：${state.topic}
+用户细节：${details}
+标题建议：${outline?.title ?? `关于 ${state.topic} 的研究报告`}
+写作风格：${outline?.writing_style ?? "简洁、客观"}${chartsInfo}
+
+章节正文：
+${body}
+
+要求：
+- 在开头写一段 2-4 句的引言，概括背景与目的
+- 保持现有章节结构（已给出小标题），确保内容连贯流畅
+${charts.length > 0 ? `- 在合适的位置插入图表占位符：{{CHART:chartId}}，例如 {{CHART:chart1}}\n` : ''}- 在报告末尾添加 "## 总结与建议" 章节，给出 3-5 条可执行建议
+- 最后添加 "## 参考来源" 章节
+- 使用 Markdown 格式，结构清晰
+- 不要修改章节中已标注的来源引用
+- 整体语言风格保持专业、客观、易读
+
+输出完整的 Markdown 报告：`;
+        } else {
+            // 快速报告生成（直接问答、结构化输出）
+            console.log("[writeReport] 使用快速报告生成模式");
+
+            const formatHint =
+                state.output_format === "深度报告"
+                    ? "请生成详细的研究报告，使用 Markdown 格式，包含引言、分析、趋势、总结等多个章节"
+                    : state.output_format === "结构化输出"
+                        ? "请输出 JSON 格式的结构化数据，包括 title（标题）、summary（摘要）、trends（趋势分析）、recommendations（建议）四个字段"
+                        : "请用简洁明了的语言直接回答问题，不超过300字";
+
+            prompt = `请根据以下信息撰写一份研究报告。
 
 主题：${state.topic}
 细节：${details}
@@ -652,6 +714,7 @@ ${contentText}
 - 根据提供的网页内容进行分析，概述研究现状、趋势和潜在方向
 - ${formatHint}
 - 请在报告中标明信息来源（引用网页标题或URL）`;
+        }
 
         const resp = await state.llm_client.chat.completions.create({
             model: state.llm_model,
@@ -661,7 +724,42 @@ ${contentText}
         const inputTokens = resp.usage?.prompt_tokens ?? 0;
         const outputTokens = resp.usage?.completion_tokens ?? 0;
 
-        const report = resp.choices[0].message.content?.trim() || "";
+        let report = resp.choices[0].message.content?.trim() || "";
+
+        // 如果是深度分析但报告中缺少参考来源，手动添加
+        if (hasDeepAnalysis) {
+            const coarseRead = coarseReadJson ? JSON.parse(coarseReadJson) : null;
+            const evidenceRefs = coarseRead?.evidence_refs || [];
+            const referencesText = evidenceRefs.slice(0, 10).map((ref: any, idx: number) =>
+                `${idx + 1}. [${ref.title || '未知标题'}](${ref.url || '#'})`
+            ).join("\n");
+
+            if (!report.includes("## 参考来源") && !report.includes("## References") && referencesText) {
+                report += `
+
+## 参考来源
+
+${referencesText}`;
+            }
+
+            // 如果有图表，将图表配置嵌入报告（使用特殊标记）
+            if (chartsJson) {
+                try {
+                    const charts = JSON.parse(chartsJson);
+                    if (Array.isArray(charts) && charts.length > 0) {
+                        // 在报告末尾添加图表配置（隐藏在 HTML 注释中）
+                        report += `
+
+<!-- ECHARTS_CONFIG_START
+${JSON.stringify(charts, null, 2)}
+ECHARTS_CONFIG_END -->`;
+                    }
+                } catch (e) {
+                    console.error("[writeReport] 解析图表配置失败:", e);
+                }
+            }
+        }
+
         console.log("[writeReport] 报告生成完成");
 
         // 记录步骤完成
@@ -672,7 +770,7 @@ ${contentText}
                 inputTokens,
                 outputTokens,
                 Date.now() - startTime,
-                `生成了 ${report.length} 个字符的${state.output_format}报告`
+                `生成了 ${report.length} 个字符的${state.output_format}报告${hasDeepAnalysis ? '（增强版）' : ''}`
             );
             await AgentSessionService.updateTokens(state.session_id, inputTokens, outputTokens);
         }
@@ -695,7 +793,21 @@ ${contentText}
 }
 
 // ----------------------------
-// 3️⃣ 构建链式 Graph
+// 3️⃣ 路由函数：根据输出格式决定后续流程
+// ----------------------------
+function routeAfterExtract(state: typeof ResearchState.State): string {
+    // 如果选择深度报告，使用新的三步预处理流程 + writeReport
+    if (state.output_format === "深度报告") {
+        console.log("[路由] 选择深度报告流程：粗读 -> 生成大纲 -> 填充内容 -> 最终润色");
+        return "coarseRead";
+    }
+    // 其他格式直接使用 writeReport（快速模式）
+    console.log("[路由] 选择快速报告流程：直接生成报告");
+    return "writeReport";
+}
+
+// ----------------------------
+// 4️⃣ 构建链式 Graph
 // ----------------------------
 export const ResearchGraph = new StateGraph(ResearchState)
     .addNode("askDetails", askDetails)
@@ -704,14 +816,30 @@ export const ResearchGraph = new StateGraph(ResearchState)
     .addNode("userChooseFormat", userChooseFormat)
     .addNode("search", searchSearxng)
     .addNode("extractContent", extractPageContent)
+    // 统一的报告生成节点（智能适配快速/深度模式）
     .addNode("writeReport", writeReport)
+    // 深度报告专用的前置节点
+    .addNode("coarseRead", coarseRead)
+    .addNode("craftOutline", craftOutline)
+    .addNode("fillOutline", fillOutline)
+    .addNode("generateCharts", generateCharts)
     .addEdge(START, "askDetails")
     .addEdge("askDetails", "userReviewDetails")
     .addEdge("userReviewDetails", "buildQuery")
     .addEdge("buildQuery", "userChooseFormat")
     .addEdge("userChooseFormat", "search")
     .addEdge("search", "extractContent")
-    .addEdge("extractContent", "writeReport")
+    // 条件路由：根据输出格式选择不同流程
+    .addConditionalEdges("extractContent", routeAfterExtract, {
+        "coarseRead": "coarseRead",      // 深度报告：先做分析
+        "writeReport": "writeReport"      // 快速报告：直接生成
+    })
+    // 深度报告流程：粗读 -> 大纲 -> 填充 -> 图表 -> 最终报告
+    .addEdge("coarseRead", "craftOutline")
+    .addEdge("craftOutline", "fillOutline")
+    .addEdge("fillOutline", "generateCharts")
+    .addEdge("generateCharts", "writeReport")  // 图表生成后进入最终报告
+    // 所有流程最终都通过 writeReport 结束
     .addEdge("writeReport", END);
 
 // 创建全局 checkpointer
